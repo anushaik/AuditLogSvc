@@ -1,0 +1,147 @@
+import json
+import shutil
+import sqlite3
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+HTML_PATH = ROOT / "api_test_report.html"
+BASE_URL = "http://127.0.0.1:8000"
+
+
+def stop_existing_server():
+    if shutil.which("lsof") is None:
+        return
+    try:
+        output = subprocess.check_output(["lsof", "-ti", "tcp:8000"], stderr=subprocess.DEVNULL).decode().strip()
+    except subprocess.CalledProcessError:
+        return
+    for pid in output.splitlines():
+        if pid:
+            subprocess.run(["kill", "-9", pid], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(1)
+
+
+def start_server():
+    stop_existing_server()
+    subprocess.Popen(
+        [sys.executable, "-m", "uvicorn", "app:app", "--host", "127.0.0.1", "--port", "8000"],
+        cwd=str(ROOT),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    for _ in range(20):
+        try:
+            with urllib.request.urlopen(f"{BASE_URL}/docs", timeout=1) as response:
+                if response.status == 200:
+                    return True
+        except Exception:
+            time.sleep(0.5)
+    return False
+
+
+def request_json(method, path, payload=None, expected_status=None):
+    data = None
+    headers = {}
+    if payload is not None:
+        data = json.dumps(payload).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(f"{BASE_URL}{path}", data=data, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=5) as response:
+            body = response.read().decode("utf-8")
+            return response.status, body
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        return exc.code, body
+    except Exception as exc:
+        return None, str(exc)
+
+
+def build_report():
+    results = []
+    results.append(("Start server", "PASS" if start_server() else "FAIL", "Server available"))
+
+    write_status, write_body = request_json(
+        "POST",
+        "/audit/events",
+        {
+            "eventType": "USER_LOGIN",
+            "actorId": "api-user",
+            "resourceType": "account",
+            "resourceId": "acct-100",
+            "payload": {"ip": "127.0.0.1"},
+        },
+    )
+    results.append(("POST /audit/events", "PASS" if write_status == 200 else "FAIL", write_body))
+
+    invalid_status, invalid_body = request_json(
+        "POST",
+        "/audit/events",
+        {
+            "eventType": "",
+            "actorId": "api-user",
+            "resourceType": "account",
+            "resourceId": "acct-101",
+            "payload": {},
+        },
+        expected_status=422,
+    )
+    results.append(("POST /audit/events invalid payload", "PASS" if invalid_status == 422 else "FAIL", invalid_body))
+
+    query_status, query_body = request_json("GET", "/audit/events?actorId=api-user")
+    results.append(("GET /audit/events", "PASS" if query_status == 200 else "FAIL", query_body))
+
+    db_path = ROOT / "audit.db"
+    if db_path.exists():
+        with sqlite3.connect(db_path) as conn:
+            conn.execute(
+                "UPDATE audit_events SET payload = ? WHERE id = (SELECT MAX(id) FROM audit_events)",
+                (json.dumps({"tampered": True}),),
+            )
+            conn.commit()
+
+    verify_status, verify_body = request_json("GET", "/audit/verify")
+    results.append(
+        (
+            "GET /audit/verify after tampering",
+            "PASS" if verify_status == 200 and '"intact": false' in verify_body.lower() else "FAIL",
+            verify_body,
+        )
+    )
+
+    html = f"""<!DOCTYPE html>
+<html lang=\"en\">
+<head>
+  <meta charset=\"UTF-8\" />
+  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />
+  <title>API Smoke Test Report</title>
+  <style>
+    body {{ font-family: Arial, sans-serif; margin: 2rem; }}
+    table {{ border-collapse: collapse; width: 100%; max-width: 1000px; }}
+    th, td {{ border: 1px solid #ddd; padding: 0.75rem; text-align: left; vertical-align: top; }}
+    th {{ background: #f5f5f5; }}
+    .pass {{ color: #0a7f2e; font-weight: bold; }}
+    .fail {{ color: #b42318; font-weight: bold; }}
+    pre {{ white-space: pre-wrap; word-break: break-word; margin: 0; }}
+  </style>
+</head>
+<body>
+  <h1>API Smoke Test Report</h1>
+  <table>
+    <tr><th>Check</th><th>Status</th><th>Details</th></tr>
+    {''.join(f'<tr><td>{name}</td><td class="{status.lower()}">{status}</td><td><pre>{details}</pre></td></tr>' for name, status, details in results)}
+  </table>
+</body>
+</html>
+"""
+    HTML_PATH.write_text(html, encoding="utf-8")
+    return HTML_PATH
+
+
+if __name__ == "__main__":
+    build_report()

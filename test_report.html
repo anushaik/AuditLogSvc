@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Scenario A Test Report</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2rem; line-height: 1.5; }
+    .card { border: 1px solid #ddd; border-radius: 8px; padding: 1.25rem; max-width: 800px; }
+    .pass { color: #0a7f2e; font-weight: bold; }
+    .warn { color: #a65c00; }
+    pre { background: #f6f8fa; padding: 1rem; border-radius: 6px; overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Scenario A Test Report</h1>
+    <p><strong>Command:</strong> python3 -m pytest -q</p>
+    <p><strong>Status:</strong> <span class="pass">Passed</span></p>
+    <p><strong>Summary:</strong> 2 tests passed, 0 failed, 6 warnings.</p>
+    <pre>..                                                                       [100%]
+2 passed, 6 warnings in 0.29s</pre>
+    <h2>Warnings</h2>
+    <ul>
+      <li class="warn">FastAPI startup event deprecation warnings related to the current app startup hook.</li>
+    </ul>
+  </div>
+</body>
+</html>

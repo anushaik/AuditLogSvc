@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>API Smoke Test Report</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2rem; }
+    table { border-collapse: collapse; width: 100%; max-width: 1000px; }
+    th, td { border: 1px solid #ddd; padding: 0.75rem; text-align: left; vertical-align: top; }
+    th { background: #f5f5f5; }
+    .pass { color: #0a7f2e; font-weight: bold; }
+    .fail { color: #b42318; font-weight: bold; }
+    pre { white-space: pre-wrap; word-break: break-word; margin: 0; }
+  </style>
+</head>
+<body>
+  <h1>API Smoke Test Report</h1>
+  <table>
+    <tr><th>Check</th><th>Status</th><th>Details</th></tr>
+    <tr><td>Start server</td><td class="pass">PASS</td><td><pre>Server available</pre></td></tr><tr><td>POST /audit/events</td><td class="pass">PASS</td><td><pre>{"id":11,"eventType":"USER_LOGIN","actorId":"api-user","resourceType":"account","resourceId":"acct-100","payload":{"ip":"127.0.0.1"},"timestamp":"2026-08-07T22:44:39.305392+00:00","prevHash":"206827285960a97951e1d901cceb254fd57f3b6c50fef1f8bd600417a5a6dd9e","currHash":"de5a4fb93656c4c6da064c5585c0ee6e9d019714ce70e6cd70ce5981a37aa04b"}</pre></td></tr><tr><td>POST /audit/events invalid payload</td><td class="pass">PASS</td><td><pre>{"detail":[{"type":"value_error","loc":["body","eventType"],"msg":"Value error, must be a non-empty string","input":"","ctx":{"error":{}}}]}</pre></td></tr><tr><td>GET /audit/events</td><td class="pass">PASS</td><td><pre>{"total":9,"page":1,"pageSize":20,"items":[{"id":3,"eventType":"USER_LOGIN","actorId":"api-user","resourceType":"account","resourceId":"acct-100","payload":{"ip":"127.0.0.1"},"timestamp":"2026-08-07T22:40:27.399927+00:00","prevHash":"13c85485d58eb90b7346ab719f8b1ef2550752ec0b5bd0f07875bd3618a5ebcb","currHash":"00a15f40d72c48b5b06d4f60d04821d2c0bd97f423597aaead986ead6972d3b3"},{"id":4,"eventType":"USER_LOGIN","actorId":"api-user","resourceType":"account","resourceId":"acct-100","payload":{"ip":"127.0.0.1"},"timestamp":"2026-08-07T22:41:41.506459+00:00","prevHash":"00a15f40d72c48b5b06d4f60d04821d2c0bd97f423597aaead986ead6972d3b3","currHash":"b4726634915af49ff30616bec7df439078380f7213ad7debe65b4091c0b3354b"},{"id":5,"eventType":"","actorId":"api-user","resourceType":"account","resourceId":"acct-101","payload":{},"timestamp":"2026-08-07T22:41:41.509713+00:00","prevHash":"b4726634915af49ff30616bec7df439078380f7213ad7debe65b4091c0b3354b","currHash":"89335fcfc9c6261ebd28a188fe43606a3e923f171b780a86db3937d26d7e8dfd"},{"id":6,"eventType":"USER_LOGIN","actorId":"api-user","resourceType":"account","resourceId":"acct-100","payload":{"ip":"127.0.0.1"},"timestamp":"2026-08-07T22:42:14.622504+00:00","prevHash":"89335fcfc9c6261ebd28a188fe43606a3e923f171b780a86db3937d26d7e8dfd","currHash":"ab9da74f71d45e7d74ac3c38c0222e2e20cce5e98dc0b1d194e8c36980ba7b4d"},{"id":7,"eventType":"","actorId":"api-user","resourceType":"account","resourceId":"acct-101","payload":{},"timestamp":"2026-08-07T22:42:14.624810+00:00","prevHash":"ab9da74f71d45e7d74ac3c38c0222e2e20cce5e98dc0b1d194e8c36980ba7b4d","currHash":"e2b9022b1b81e931b5a7372b8043f91418a8487e1bfd0e3310a1009c6cc9867e"},{"id":8,"eventType":"USER_LOGIN","actorId":"api-user","resourceType":"account","resourceId":"acct-100","payload":{"ip":"127.0.0.1"},"timestamp":"2026-08-07T22:42:39.236847+00:00","prevHash":"e2b9022b1b81e931b5a7372b8043f91418a8487e1bfd0e3310a1009c6cc9867e","currHash":"2e7cfcd175862f910505deb1facb804e32022a642c0484d82de6199d2a8068fe"},{"id":9,"eventType":"","actorId":"api-user","resourceType":"account","resourceId":"acct-101","payload":{},"timestamp":"2026-08-07T22:42:39.238925+00:00","prevHash":"2e7cfcd175862f910505deb1facb804e32022a642c0484d82de6199d2a8068fe","currHash":"a5bbda27826c6e775950df72cc930104041f36c4e8081ad0ed0fdb14c4af7686"},{"id":10,"eventType":"USER_LOGIN","actorId":"api-user","resourceType":"account","resourceId":"acct-100","payload":{"ip":"127.0.0.1"},"timestamp":"2026-08-07T22:43:03.433945+00:00","prevHash":"a5bbda27826c6e775950df72cc930104041f36c4e8081ad0ed0fdb14c4af7686","currHash":"206827285960a97951e1d901cceb254fd57f3b6c50fef1f8bd600417a5a6dd9e"},{"id":11,"eventType":"USER_LOGIN","actorId":"api-user","resourceType":"account","resourceId":"acct-100","payload":{"ip":"127.0.0.1"},"timestamp":"2026-08-07T22:44:39.305392+00:00","prevHash":"206827285960a97951e1d901cceb254fd57f3b6c50fef1f8bd600417a5a6dd9e","currHash":"de5a4fb93656c4c6da064c5585c0ee6e9d019714ce70e6cd70ce5981a37aa04b"}]}</pre></td></tr><tr><td>GET /audit/verify after tampering</td><td class="fail">FAIL</td><td><pre>{"intact":false,"firstFailure":{"recordId":11,"reason":"hash_mismatch","expectedHash":"7cb66397d5e8850d9aeb7c6c0a6c2ceaed473df537cf2d512f70efb7aed4b4c5","storedHash":"de5a4fb93656c4c6da064c5585c0ee6e9d019714ce70e6cd70ce5981a37aa04b"}}</pre></td></tr>
+  </table>
+</body>
+</html>

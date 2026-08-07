@@ -5,9 +5,14 @@ This file tracks AI-assisted work for this repository.
 Each entry records:
 - Date and time
 - Task or change being worked on
+- Prompt used
+- AI output produced
+- Decision status (accepted, rejected, pending, or partial)
 - Accepted changes produced with AI assistance
 - Rejected or revised ideas
 - Notes for traceability
+
+This log is intended to support the assignment's AI-assisted execution expectations: use AI across implementation, debugging, refactoring, test generation, documentation, and review preparation; maintain traceability of what was generated, edited, rejected, and why; apply quality gates; enforce secure usage; require human review for high-impact changes; and preserve engineer ownership of correctness, maintainability, and production readiness.
 
 ---
 
@@ -82,5 +87,47 @@ Each entry records:
 - Rejected details:
 - No major rejections; kept the changes focused on traceability and consistency
 - Notes: Recorded to verify that the core requirements are now part of the implementation narrative and repository workflow
+
+---
+
+## 2026-08-07 21:27 UTC
+- Step: Auto-logged after commit
+- Prompt: N/A
+- AI output: Recorded automatically by the repository post-commit hook
+- Command: N/A
+- Decision: accepted
+- Accepted details:
+- Committed repository changes
+- Rejected details:
+- None
+- Notes: Recorded automatically by the repository post-commit hook
+
+---
+
+## 2026-08-07 21:34 UTC
+- Step: Enforce AI-assisted execution expectations
+- Prompt: Enforce this on the AI Usage log 'AI-Assisted Execution (Critical Differentiator): Use AI across implementation, debugging, refactoring, test generation, documentation, and review preparation...'
+- AI output: Updated the repository documentation and AI usage log to reflect the required AI-assisted execution expectations and traceability practices
+- Command: python3 scripts/update_ai_usage_log.py --task 'Enforce AI-assisted execution expectations'
+- Decision: accepted
+- Accepted details:
+- README and AI_USAGE_LOG now state the expectations for traceability, quality gates, secure usage, human review, and engineer ownership
+- Rejected details:
+- No major rejections; kept the guidance concise and implementation-focused
+- Notes: Recorded to ensure the repository workflow now enforces the assignment's AI-assisted execution requirements
+
+---
+
+## 2026-08-07 22:21 UTC
+- Step: Implemented Scenario A prototype
+- Prompt: Follow the instructions in TaskBreakdown.md and generate all the code artifacts starting from scaffolding to production ready application
+- AI output: Built a runnable FastAPI-based audit log service with write, query, verify, persistence, tests, and local startup instructions
+- Command: python3 scripts/update_ai_usage_log.py --task 'Implemented Scenario A prototype'
+- Decision: accepted
+- Accepted details:
+- Implemented the full Scenario A prototype with append-only storage, hash-chain logic, verification endpoint, tests, and documentation
+- Rejected details:
+- No major rejections; kept the implementation aligned with the recommended monolithic approach
+- Notes: Recorded as the implementation milestone for the Scenario A prototype
 
 ---

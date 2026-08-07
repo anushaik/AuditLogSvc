@@ -12,7 +12,7 @@ Break the audit log service assignment into a clear sequence of implementation t
 - Create the repository structure and initial documentation files.
 - Define the implementation scope for Scenario A.
 - Set up the development environment and dependency baseline.
-- Establish the AI usage logging workflow for traceability.
+- Establish the AI usage logging workflow for traceability by creating a repository-tracked log, recording accepted and rejected AI-assisted decisions, and maintaining a consistent history for each substantive prompt/output step that captures task intent, constraints, validation, and rationale.
 
 Dependencies:
 - This workstream is prerequisite for all other tasks.
@@ -69,7 +69,18 @@ Dependencies:
 7. Validate tamper detection by direct data modification.
 8. Document architecture and future-extension scope.
 
-## 4. Dependency Summary
+## 4. Prompt Guidance by Workstream
+
+Each workstream should be executed with a clear prompt that states intent, constraints, expected output, and validation criteria.
+
+- Workstream 1 prompt: "Help me set up a repository structure and documentation baseline for a monolithic audit log service prototype, with explicit traceability for AI-assisted work."
+- Workstream 2 prompt: "Help me design a relational schema and storage approach for append-only audit events, including fields for payload, timestamps, and hash-chain metadata."
+- Workstream 3 prompt: "Help me implement the write, query, and verification APIs for the recommended monolithic service architecture, while keeping the design simple and testable."
+- Workstream 4 prompt: "Help me implement SHA-256 hash-chain logic for append-only records and define how verification should detect the first broken link."
+- Workstream 5 prompt: "Help me create unit and integration tests for the core audit service, including a tampering scenario that proves verification fails after direct data modification."
+- Workstream 6 prompt: "Help me document the architecture, assumptions, risks, and extension plan for Scenario B and Scenario C while keeping the initial implementation focused on Scenario A."
+
+## 5. Dependency Summary
 - Documentation and environment setup must come first.
 - Storage design must precede API implementation.
 - Hash-chain logic depends on the write path and storage design.
