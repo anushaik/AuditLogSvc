@@ -18,11 +18,11 @@ This approach was chosen because it prioritizes correctness, traceability, and d
 
 The repository now includes the following artifacts:
 
-- [app.py](app.py): FastAPI application implementing the write API, query API, and verification endpoint.
+- [src/audit_log_service/app.py](src/audit_log_service/app.py): FastAPI application implementing the write API, query API, and verification endpoint.
 - [tests/test_audit_service.py](tests/test_audit_service.py): automated tests covering success, invalid input, and tamper detection.
 - [api_test_runner.py](api_test_runner.py): smoke-test script for exercising the API over HTTP.
-- [api_test_report.html](api_test_report.html): generated HTML report for smoke-test execution.
-- [test_report.html](test_report.html): generated HTML report for the automated pytest suite.
+- [reports/api_test_report.html](reports/api_test_report.html): generated HTML report for smoke-test execution.
+- [reports/test_report.html](reports/test_report.html): generated HTML report for the automated pytest suite.
 - [README.md](README.md): local setup and usage instructions.
 - [Testing_Documentation_ScenarioA.md](Testing_Documentation_ScenarioA.md): testing approach and current coverage summary.
 - [Scenario_A_Requirement_Analysis_ScenarioA.md](Scenario_A_Requirement_Analysis_ScenarioA.md): requirement interpretation and scope definition.

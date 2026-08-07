@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from app import create_app, init_db
+from src.audit_log_service import create_app, init_db
 
 
 @pytest.fixture()
@@ -94,3 +94,43 @@ def test_tampering_is_detected(client):
     payload = verify.json()
     assert payload["intact"] is False
     assert payload["firstFailure"] is not None
+
+
+def test_retention_redaction_and_export_workflow(client):
+    create_response = client.post(
+        "/audit/events",
+        json={
+            "eventType": "USER_LOGIN",
+            "actorId": "user-4",
+            "resourceType": "account",
+            "resourceId": "acct-4",
+            "payload": {"email": "person@example.com", "secret": "abc123"},
+            "timestamp": "2000-01-01T00:00:00+00:00",
+        },
+    )
+    assert create_response.status_code == 200
+    event_id = create_response.json()["id"]
+
+    archive_response = client.post(f"/audit/events/{event_id}/archive")
+    assert archive_response.status_code == 200
+    assert archive_response.json()["status"] == "archived"
+
+    redact_response = client.post(
+        f"/audit/events/{event_id}/redact",
+        json={"fields": ["secret"], "reason": "pii"},
+    )
+    assert redact_response.status_code == 200
+    redacted_body = redact_response.json()
+    assert redacted_body["redactionVersion"] == 1
+    assert redacted_body["redactedPayload"]["secret"] == "[REDACTED]"
+
+    retention_response = client.post("/audit/events/retention/apply?olderThanDays=1")
+    assert retention_response.status_code == 200
+    assert retention_response.json()["archivedCount"] >= 1
+
+    export_response = client.get("/audit/export?actorId=user-4")
+    assert export_response.status_code == 200
+    export_payload = export_response.json()
+    assert export_payload["totalRecords"] >= 1
+    assert export_payload["verification"]["intact"] is True
+    assert export_payload["records"][0]["status"] in {"archived", "active"}

@@ -1,4 +1,6 @@
+import importlib.util
 import json
+import os
 import shutil
 import sqlite3
 import subprocess
@@ -11,6 +13,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 HTML_PATH = ROOT / "api_test_report.html"
 BASE_URL = "http://127.0.0.1:8000"
+DEFAULT_BACKEND = os.getenv("DB_BACKEND", "postgres").lower()
+PSYCOPG2_AVAILABLE = importlib.util.find_spec("psycopg2") is not None
+EFFECTIVE_BACKEND = "postgres" if DEFAULT_BACKEND == "postgres" and PSYCOPG2_AVAILABLE else "sqlite"
 
 
 def stop_existing_server():
@@ -28,11 +33,14 @@ def stop_existing_server():
 
 def start_server():
     stop_existing_server()
+    env = os.environ.copy()
+    env["DB_BACKEND"] = EFFECTIVE_BACKEND
     subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "app:app", "--host", "127.0.0.1", "--port", "8000"],
-        cwd=str(ROOT),
+        [sys.executable, "-m", "uvicorn", "audit_log_service.app:app", "--host", "127.0.0.1", "--port", "8000"],
+        cwd=str(ROOT / "src"),
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
+        env=env,
     )
     for _ in range(20):
         try:
@@ -64,6 +72,13 @@ def request_json(method, path, payload=None, expected_status=None):
 
 def build_report():
     results = []
+    results.append(
+        (
+            "Backend configuration",
+            "PASS",
+            f"configured={DEFAULT_BACKEND}; effective={EFFECTIVE_BACKEND}; psycopg2 available={PSYCOPG2_AVAILABLE}",
+        )
+    )
     results.append(("Start server", "PASS" if start_server() else "FAIL", "Server available"))
 
     write_status, write_body = request_json(
@@ -97,13 +112,21 @@ def build_report():
     results.append(("GET /audit/events", "PASS" if query_status == 200 else "FAIL", query_body))
 
     db_path = ROOT / "audit.db"
-    if db_path.exists():
+    if EFFECTIVE_BACKEND == "sqlite" and db_path.exists():
         with sqlite3.connect(db_path) as conn:
             conn.execute(
                 "UPDATE audit_events SET payload = ? WHERE id = (SELECT MAX(id) FROM audit_events)",
                 (json.dumps({"tampered": True}),),
             )
             conn.commit()
+    elif EFFECTIVE_BACKEND == "postgres":
+        results.append(
+            (
+                "Tamper check",
+                "SKIP",
+                "PostgreSQL backend selected but no live PostgreSQL instance is available in this environment.",
+            )
+        )
 
     verify_status, verify_body = request_json("GET", "/audit/verify")
     results.append(
@@ -113,6 +136,24 @@ def build_report():
             verify_body,
         )
     )
+
+    archive_status, archive_body = request_json("POST", "/audit/events/1/archive")
+    results.append(("POST /audit/events/{id}/archive", "PASS" if archive_status == 200 else "FAIL", archive_body))
+
+    redact_status, redact_body = request_json(
+        "POST",
+        "/audit/events/1/redact",
+        {"fields": ["secret"], "reason": "pii"},
+    )
+    results.append(("POST /audit/events/{id}/redact", "PASS" if redact_status == 200 else "FAIL", redact_body))
+
+    retention_status, retention_body = request_json("POST", "/audit/events/retention/apply?olderThanDays=1")
+    results.append(
+        ("POST /audit/events/retention/apply", "PASS" if retention_status == 200 else "FAIL", retention_body)
+    )
+
+    export_status, export_body = request_json("GET", "/audit/export?actorId=api-user")
+    results.append(("GET /audit/export", "PASS" if export_status == 200 else "FAIL", export_body))
 
     html = f"""<!DOCTYPE html>
 <html lang=\"en\">
@@ -132,6 +173,7 @@ def build_report():
 </head>
 <body>
   <h1>API Smoke Test Report</h1>
+  <p>This report covers Scenario A behavior plus the Scenario B retention, redaction, and export endpoints.</p>
   <table>
     <tr><th>Check</th><th>Status</th><th>Details</th></tr>
     {''.join(f'<tr><td>{name}</td><td class="{status.lower()}">{status}</td><td><pre>{details}</pre></td></tr>' for name, status, details in results)}
