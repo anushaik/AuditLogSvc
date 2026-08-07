@@ -1,0 +1,9 @@
+#!/usr/bin/env zsh
+set -euo pipefail
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+python3 scripts/update_ai_usage_log.py \
+  --task "Auto-logged after commit" \
+  --accepted "Committed repository changes" \
+  --rejected "None" \
+  --notes "Recorded automatically by the repository post-commit hook"
