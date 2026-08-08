@@ -123,3 +123,6 @@ Migrate the current Scenario A audit log service from SQLite to PostgreSQL while
 ## Expected Outcome
 
 After this migration, Scenario A will remain functionally the same but will be more realistic for a production-style deployment: the service will use a real relational database, support more durable storage, and be more aligned with enterprise expectations while preserving the core tamper-evident design.
+
+## Implementation status
+The repository now includes explicit migration markers for the initial schema and governance metadata, a migration helper module, and documentation that explains the operational expectations for versioned schema evolution and backup/restore compatibility.

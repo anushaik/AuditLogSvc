@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parent
 HTML_PATH = ROOT / "api_test_report.html"
 MARKDOWN_PATH = ROOT / "reports" / "evidence_summary.md"
 BASE_URL = "http://127.0.0.1:8000"
-DEFAULT_BACKEND = os.getenv("DB_BACKEND", "postgres").lower()
+DEFAULT_BACKEND = os.getenv("DB_BACKEND", "sqlite").lower()
 PSYCOPG2_AVAILABLE = importlib.util.find_spec("psycopg2") is not None
 EFFECTIVE_BACKEND = "postgres" if DEFAULT_BACKEND == "postgres" and PSYCOPG2_AVAILABLE else "sqlite"
 
@@ -56,9 +56,15 @@ def start_server():
     return False
 
 
-def request_json(method, path, payload=None, expected_status=None):
+def request_json(method, path, payload=None, expected_status=None, role="auditor"):
     data = None
     headers = {}
+    if role == "operator":
+        headers["Authorization"] = "Bearer operator-token"
+    elif role == "admin":
+        headers["Authorization"] = "Bearer admin-token"
+    else:
+        headers["Authorization"] = "Bearer auditor-token"
     if payload is not None:
         data = json.dumps(payload).encode("utf-8")
         headers["Content-Type"] = "application/json"
@@ -96,6 +102,7 @@ def build_report():
             "resourceId": "acct-100",
             "payload": {"ip": "127.0.0.1"},
         },
+        role="operator",
     )
     results.append(("POST /audit/events", "PASS" if write_status == 200 else "FAIL", write_body))
 
@@ -110,10 +117,11 @@ def build_report():
             "payload": {},
         },
         expected_status=422,
+        role="operator",
     )
     results.append(("POST /audit/events invalid payload", "PASS" if invalid_status == 422 else "FAIL", invalid_body))
 
-    query_status, query_body = request_json("GET", "/audit/events?actorId=api-user")
+    query_status, query_body = request_json("GET", "/audit/events?actorId=api-user", role="auditor")
     results.append(("GET /audit/events", "PASS" if query_status == 200 else "FAIL", query_body))
 
     db_path = ROOT / "src" / "audit.db"
@@ -133,7 +141,7 @@ def build_report():
             )
         )
 
-    verify_status, verify_body = request_json("GET", "/audit/verify")
+    verify_status, verify_body = request_json("GET", "/audit/verify", role="auditor")
     verify_passed = False
     if verify_status == 200:
         try:
@@ -149,27 +157,33 @@ def build_report():
         )
     )
 
-    archive_status, archive_body = request_json("POST", "/audit/events/1/archive")
+    archive_status, archive_body = request_json("POST", "/audit/events/1/archive", role="admin")
     results.append(("POST /audit/events/{id}/archive", "PASS" if archive_status == 200 else "FAIL", archive_body))
 
     redact_status, redact_body = request_json(
         "POST",
         "/audit/events/1/redact",
         {"fields": ["secret"], "reason": "pii"},
+        role="admin",
     )
     results.append(("POST /audit/events/{id}/redact", "PASS" if redact_status == 200 else "FAIL", redact_body))
 
-    retention_status, retention_body = request_json("POST", "/audit/events/retention/apply?olderThanDays=1")
+    retention_status, retention_body = request_json(
+        "POST",
+        "/audit/events/retention/apply?olderThanDays=1",
+        role="admin",
+    )
     results.append(
         ("POST /audit/events/retention/apply", "PASS" if retention_status == 200 else "FAIL", retention_body)
     )
 
-    export_status, export_body = request_json("GET", "/audit/export?actorId=api-user")
+    export_status, export_body = request_json("GET", "/audit/export?actorId=api-user", role="auditor")
     results.append(("GET /audit/export", "PASS" if export_status == 200 else "FAIL", export_body))
 
     compliance_status, compliance_body = request_json(
         "GET",
         "/audit/compliance/report?resourceId=acct-100&actorId=api-user",
+        role="auditor",
     )
     results.append(
         ("GET /audit/compliance/report", "PASS" if compliance_status == 200 else "FAIL", compliance_body)

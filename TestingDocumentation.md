@@ -3,6 +3,8 @@
 ## Overview
 This document describes the automated tests and smoke-test validation implemented for the Scenario A audit log service.
 
+The current service should be treated as a production-oriented, reviewable implementation rather than a minimal prototype. It now includes authentication, security controls, observability, resilience-oriented database handling, governance metadata, and end-to-end regression coverage.
+
 ## Test Strategy
 The current approach is intentionally pragmatic. It validates the core behaviors needed to demonstrate that the prototype works end to end, while staying lightweight and easy to run locally.
 
@@ -73,12 +75,12 @@ python3 -m pytest -q
 
 ## Current Result
 Verified result:
-- 17 tests passed in the current suite
+- 33 tests passed in the current suite, with 2 warnings from the current dependency stack
 
 ## Trade-offs and limitations
 - The test suite is fast and self-contained, which is ideal for local review and assignment delivery.
 - It does not yet simulate production concerns such as scale, concurrency, or external service failures.
-- The design prioritizes demonstrable correctness over operational hardening.
+- The design prioritizes demonstrable correctness and reviewability while still covering a broad set of operational and governance scenarios.
 
 # Testing Documentation – Scenario B
 

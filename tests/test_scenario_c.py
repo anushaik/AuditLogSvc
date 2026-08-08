@@ -18,6 +18,7 @@ def client(tmp_path):
 def test_compliance_report_returns_aggregated_access_events(client):
     client.post(
         "/audit/events",
+        headers={"Authorization": "Bearer operator-token"},
         json={
             "eventType": "ACCESS_GRANTED",
             "actorId": "auditor-1",
@@ -28,6 +29,7 @@ def test_compliance_report_returns_aggregated_access_events(client):
     )
     client.post(
         "/audit/events",
+        headers={"Authorization": "Bearer operator-token"},
         json={
             "eventType": "ACCOUNT_VIEWED",
             "actorId": "auditor-1",
@@ -37,7 +39,10 @@ def test_compliance_report_returns_aggregated_access_events(client):
         },
     )
 
-    response = client.get("/audit/compliance/report?resourceId=acct-900&actorId=auditor-1")
+    response = client.get(
+        "/audit/compliance/report?resourceId=acct-900&actorId=auditor-1",
+        headers={"Authorization": "Bearer auditor-token"},
+    )
     assert response.status_code == 200
     body = response.json()
     assert body["resourceId"] == "acct-900"

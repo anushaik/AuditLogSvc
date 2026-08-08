@@ -1,8 +1,8 @@
 # AuditLogSvc
 Tamper evident Audit log service
 
-## Working prototype — runnable end-to-end
-This repository contains a working prototype of a tamper-evident audit log service that is runnable end to end, with a FastAPI interface, automated tests, smoke-test evidence, and scenario-based extensions.
+## Production-oriented audit log service
+This repository contains a hardened, reviewable audit log service that is runnable end to end, with a FastAPI interface, automated tests, smoke-test evidence, governance controls, scenario-based extensions, and release-maturity scaffolding. It is suitable for controlled internal deployment and review use, while still remaining a monolithic service rather than a full enterprise-scale compliance platform.
 
 ## Prerequisites
 - Python 3.9+ (3.11 recommended)
@@ -10,49 +10,167 @@ This repository contains a working prototype of a tamper-evident audit log servi
 - `zsh` for the provided run script (`./run.sh`), which is available by default on macOS
 - Optional: Docker Desktop if you want to run the PostgreSQL-based option
 
+## Current maturity
+The implementation has moved beyond a simple prototype and now includes:
+- authentication and role-based access control for sensitive operations
+- security headers, payload limits, HTTPS-oriented protections, and CORS controls
+- observability via health/readiness endpoints, Prometheus-style metrics, correlation IDs, and alert hooks
+- stronger governance and compliance depth with immutable governance-change records, approval-style reviews, and exportable evidence bundles
+- broader testing maturity with concurrency, tampering, recovery, and deployment-contract regression tests
+- retention, redaction, export, and compliance-report workflows
+- governance metadata for ownership, classification, and retention policy
+
+This makes the service appropriate for internal review, controlled deployment, and policy demonstration. It is not intended to replace a full enterprise SIEM, secrets-management platform, or multi-region high-availability architecture.
+
 ## Run locally
 
-### Option 1: SQLite (default)
-1. Open a terminal in the repository root:
-   `cd /Users/anwar/project_Trails/AuditLogSvc`
-2. Create and activate a virtual environment (recommended):
-   `python3 -m venv .venv`
-   `source .venv/bin/activate`
-3. Install dependencies:
-   `python3 -m pip install --upgrade pip`
-   `python3 -m pip install -r requirements.txt`
-4. Start the service:
-   `./run.sh`
-5. Open the Swagger UI at: http://127.0.0.1:8000/docs
+### Working with PostgreSQL
+The service is designed to run against PostgreSQL for a more production-like setup. The app will initialize its schema automatically on startup and create the required tables when they do not already exist.
 
-### Option 2: PostgreSQL via Docker Compose
+#### Option 1: Local PostgreSQL on macOS
+1. Open a terminal in the repository root:
+   ```bash
+   cd /Users/anwar/project_Trails/AuditLogSvc
+   ```
+2. Create and activate a virtual environment:
+   ```bash
+   python3 -m venv .venv
+   source .venv/bin/activate
+   ```
+3. Install the Python dependencies:
+   ```bash
+   python3 -m pip install --upgrade pip
+   python3 -m pip install -r requirements.txt
+   ```
+4. If PostgreSQL is not already installed, install it with Homebrew:
+   ```bash
+   brew install postgresql
+   brew services start postgresql
+   ```
+5. Create the database and confirm access:
+   ```bash
+   createdb auditlog
+   psql -d auditlog -c "SELECT current_database();"
+   ```
+6. Configure the service to use PostgreSQL:
+   ```bash
+   export DB_BACKEND=postgres
+   export DB_HOST=localhost
+   export DB_PORT=5432
+   export DB_NAME=auditlog
+   export DB_USER=postgres
+   export DB_PASSWORD=postgres
+   ```
+   If you prefer a single connection string, use:
+   ```bash
+   export DATABASE_URL=postgresql://postgres:postgres@localhost:5432/auditlog
+   ```
+   For secret-based deployment, you can instead point to a password file:
+   ```bash
+   export DB_PASSWORD_FILE=/path/to/db_password.txt
+   ```
+7. Start the service:
+   ```bash
+   ./run.sh
+   ```
+8. Open the Swagger UI at http://127.0.0.1:8000/docs and verify the service with:
+   ```bash
+   curl http://127.0.0.1:8000/health
+   curl http://127.0.0.1:8000/ready
+   ```
+
+#### Option 2: PostgreSQL via Docker Compose
 1. Ensure Docker Desktop is running.
-2. Build and start the app and database from the repository root:
-   `docker compose up --build`
-3. The service will be available at `http://localhost:8000`.
-4. To stop the environment:
-   `docker compose down`
+2. Build and start the application and database from the repository root:
+   ```bash
+   docker compose up --build
+   ```
+3. The service will be available at http://localhost:8000.
+4. Health and readiness can be checked at:
+   ```bash
+   curl http://localhost:8000/health
+   curl http://localhost:8000/ready
+   ```
+5. To stop the environment:
+   ```bash
+   docker compose down
+   ```
 
 ### Manual start without the shell script
 If you prefer to start the app directly, run:
-`PYTHONPATH=src python3 -m uvicorn audit_log_service.app:app --host 127.0.0.1 --port 8000`
+```bash
+PYTHONPATH=src python3 -m uvicorn audit_log_service.app:app --host 127.0.0.1 --port 8000
+```
 
 ### Troubleshooting
 - If the service fails to start with `ModuleNotFoundError`, make sure you are in the repository root and have installed the dependencies with `python3 -m pip install -r requirements.txt`.
 - If the app cannot be imported, run it with `PYTHONPATH=src` as shown above, or from the repository root using the provided `./run.sh` script.
+- If PostgreSQL rejects connections, confirm that the server is running, that the database exists, and that the host, port, username, and password match your local configuration.
 - If port `8000` is already in use, stop the existing process or start the app on a different port, for example `PYTHONPATH=src python3 -m uvicorn audit_log_service.app:app --host 127.0.0.1 --port 8001`.
 - If Docker-based PostgreSQL fails to start, verify that Docker Desktop is running and that the compose file in the repository is the one you intended to use.
 
 ### Environment configuration
-A sample environment file is available at [.env.example](.env.example). For PostgreSQL, set `DB_BACKEND=postgres` and configure `DATABASE_URL` or the individual DB host variables.
+A sample environment file is available at [.env.example](.env.example). The service now uses environment-driven configuration with a PostgreSQL-first path for managed deployments and a profile-based configuration layer for development, staging, and production.
+
+Supported settings:
+- `DB_BACKEND=postgres` or `sqlite` (local runs default to `sqlite` for simplicity)
+- `DATABASE_URL` for a full connection string
+- `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` for explicit component settings
+- `DB_PASSWORD_FILE` to load the database password from a mounted secret file
+- `ENFORCE_HTTPS=true` to reject non-HTTPS traffic in front of the service
+- `ALLOWED_ORIGINS=https://app.example.com` to restrict browser-based cross-origin access
+- `MAX_PAYLOAD_BYTES=1048576` to limit request bodies and reduce exposure risk
+- `LOG_LEVEL=INFO` to control the emitted structured log level
+- `DB_MAX_RETRIES=3` and `DB_RETRY_DELAY_SECONDS=0.5` to control transient database retry behavior
+- `APP_ENV=production` to select the production profile and enable stricter secret and transport defaults
+- `SECRETS_MANAGER_TYPE=aws-secrets-manager` and `DB_PASSWORD_SECRET_ID=<secret-id>` to resolve database credentials via a secrets manager
+- `SECRET_ROTATION_DAYS=90` to document and enforce the expected rotation period for operational secrets
+- `AUTH_MODE=jwt` with `JWT_SECRET=<strong-secret>` to enable signed JWT bearer authentication for service clients
+- `ENABLE_PAYLOAD_ENCRYPTION=true` and `PAYLOAD_ENCRYPTION_KEY=<32-byte-key>` to encrypt particularly sensitive payload fields at rest
+
+The application initializes the schema automatically on startup and records the applied migration markers in a `schema_migrations` table. The current migrations include the base schema and the governance-metadata extension, and the service now exposes a dedicated migration entry point through the `audit_log_service.migrations` module for deployment automation.
+
+### Deployment and release maturity
+- CI/CD workflow: [.github/workflows/ci-cd.yml](.github/workflows/ci-cd.yml)
+- Kubernetes manifests: [k8s/deployment.yaml](k8s/deployment.yaml) and [k8s/service.yaml](k8s/service.yaml)
+- Release and rollout guide: [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)
+
+### Resilience and backup guidance
+- The service retries transient PostgreSQL connection failures before failing fast, with exponential backoff and a configurable connection-pool size to absorb short-lived infrastructure disruptions.
+- The app uses a graceful startup/shutdown lifecycle so logging and teardown remain consistent when the process stops, and endpoints now degrade to `503 Service Unavailable` rather than crashing when the database is temporarily unavailable.
+- For backup and restore, export the audit table contents regularly (for example, via `pg_dump` for PostgreSQL or a SQLite backup copy) and keep the hash-chain data intact as part of the recovery process.
+- The schema is now versioned via migration markers in `schema_migrations`, making it easier to roll forward during controlled deployment changes.
+- Client-facing integrations can use idempotency keys and retry policies to safely reissue writes when transient failures or partial outages occur.
 
 Use the API at:
    - POST /audit/events
    - GET /audit/events
    - GET /audit/verify
 
+Authentication and authorization are now enforced for the sensitive endpoints. Use one of the following bearer tokens in the `Authorization` header:
+- `admin-token` for administrative operations such as archive, redaction, and retention
+- `auditor-token` for read-only verification, export, and compliance-report endpoints
+- `operator-token` for creating new audit events
+
+Example:
+```bash
+curl -X POST http://127.0.0.1:8000/audit/events \
+  -H "Authorization: Bearer operator-token" \
+  -H "Content-Type: application/json" \
+  -d '{"eventType":"USER_LOGIN","actorId":"user-1","resourceType":"account","resourceId":"acct-1","payload":{"ip":"127.0.0.1"}}'
+```
+
 ### Timestamp behavior
 The service uses the caller-supplied timestamp when provided; otherwise it assigns a UTC timestamp automatically. All responses also include lightweight security headers for reviewability and basic hardening.
+
+### Compliance and governance controls
+The service now records governance metadata for each audit event so regulated deployments can enforce ownership, retention, and sensitivity handling in a reviewable way. Each record can carry:
+- `recordOwner`: the accountable business owner for the record
+- `dataClassification`: an internal classification such as `internal` or `restricted`
+- `retentionDays`: the retention horizon for the record
+- `changeReason`: the reason for the current governance change
+
+The service also computes a `retentionPolicy`, `retentionExpiresAt`, and a `changeCount` for each record. Administrators can update governance metadata through `POST /audit/events/{event_id}/governance`, which appends an auditable governance change to the record's metadata and updates the operational expectations for retention and ownership.
 
 ### Example request
 ```json
@@ -85,7 +203,7 @@ The service uses the caller-supplied timestamp when provided; otherwise it assig
 Run the test suite with:
 `python3 -m pytest -q`
 
-The Scenario A testing notes are documented in [TestingDocumentation.md](TestingDocumentation.md), and the smoke-test and evidence artifacts are generated at [api_test_report.html](api_test_report.html) and [reports/evidence_summary.md](reports/evidence_summary.md).
+The Scenario A testing notes are documented in [TestingDocumentation.md](TestingDocumentation.md), and the smoke-test and evidence artifacts are generated at [api_test_report.html](api_test_report.html) and [reports/evidence_summary.md](reports/evidence_summary.md). The current automated suite reports 33 passed tests with 2 warnings.
 
 ## Scenario B and C documentation
 
