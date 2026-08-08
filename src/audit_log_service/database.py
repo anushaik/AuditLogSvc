@@ -7,6 +7,7 @@ from typing import Optional, Tuple
 
 _INIT_LOCKS = {}
 _INIT_LOCKS_LOCK = threading.Lock()
+_SQLITE_OPERATION_LOCK = threading.RLock()
 
 
 class ConnectionPool:
@@ -16,16 +17,20 @@ class ConnectionPool:
         self._lock = threading.Lock()
 
     def acquire(self, factory):
+        thread_id = threading.get_ident()
         with self._lock:
-            if self._pool:
-                connection = self._pool.pop()
-                return connection
+            for index, (connection, owner_thread_id) in enumerate(self._pool):
+                if owner_thread_id == thread_id:
+                    self._pool.pop(index)
+                    return connection
         return factory()
 
     def release(self, connection) -> None:
         with self._lock:
             if len(self._pool) < self.max_size:
-                self._pool.append(connection)
+                self._pool.append((connection, threading.get_ident()))
+            else:
+                connection.close()
 
 
 class ResilientConnectionFactory:
@@ -71,9 +76,14 @@ class ResilientConnectionFactory:
         return self._create_sqlite_connection()
 
     def acquire(self):
+        if get_backend() != "postgres":
+            return self.create()
         return self._pool.acquire(self.create)
 
     def release(self, connection) -> None:
+        if get_backend() != "postgres":
+            connection.close()
+            return
         self._pool.release(connection)
 
 from .config import get_app_config
@@ -106,7 +116,8 @@ class DatabaseConnection:
             self._cursor.execute(normalized_query, normalized_params)
             return self._cursor
 
-        self._cursor = self._connection.execute(query, params or ())
+        with _SQLITE_OPERATION_LOCK:
+            self._cursor = self._connection.execute(query, params or ())
         return self._cursor
 
     def fetchone(self):

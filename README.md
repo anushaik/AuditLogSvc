@@ -12,13 +12,13 @@ This repository contains a hardened, reviewable audit log service that is runnab
 
 ## Current maturity
 The implementation has moved beyond a simple prototype and now includes:
-- authentication and role-based access control for sensitive operations
-- security headers, payload limits, HTTPS-oriented protections, and CORS controls
-- observability via health/readiness endpoints, Prometheus-style metrics, correlation IDs, and alert hooks
-- stronger governance and compliance depth with immutable governance-change records, approval-style reviews, and exportable evidence bundles
-- broader testing maturity with concurrency, tampering, recovery, and deployment-contract regression tests
-- retention, redaction, export, and compliance-report workflows
-- governance metadata for ownership, classification, and retention policy
+- authentication and role-based access control for create, archive, redact, retention, export, governance, and compliance operations
+- security headers, payload limits, HTTPS-oriented protections, CORS controls, and optional payload encryption for sensitive content
+- observability via health/readiness endpoints, Prometheus-style metrics, correlation IDs, structured logging, and alert hooks
+- stronger governance and compliance depth with immutable governance-change records, approval-style reviews, exportable evidence bundles, and ownership/classification metadata
+- broader testing maturity with end-to-end regression coverage for auth, tampering, retention, redaction, export, and deployment-contract behavior
+- retention, redaction, export, and compliance-report workflows backed by a tamper-evident hash chain
+- production-oriented configuration support for PostgreSQL, environment-driven settings, secrets-file handling, and migration markers
 
 This makes the service appropriate for internal review, controlled deployment, and policy demonstration. It is not intended to replace a full enterprise SIEM, secrets-management platform, or multi-region high-availability architecture.
 
@@ -78,6 +78,12 @@ The service is designed to run against PostgreSQL for a more production-like set
    curl http://127.0.0.1:8000/health
    curl http://127.0.0.1:8000/ready
    ```
+9. To authorize protected endpoints in Swagger UI, click the green "Authorize" button in the top-right. In the authorization popup, enter one of the demo bearer tokens in the value field. The service currently accepts:
+   - `admin-token`
+   - `auditor-token`
+   - `operator-token`
+   
+   If the popup expects the full header value, use `Bearer admin-token` (or `Bearer auditor-token` / `Bearer operator-token` as appropriate).
 
 #### Option 2: PostgreSQL via Docker Compose
 1. Ensure Docker Desktop is running.
@@ -147,10 +153,12 @@ Use the API at:
    - GET /audit/events
    - GET /audit/verify
 
-Authentication and authorization are now enforced for the sensitive endpoints. Use one of the following bearer tokens in the `Authorization` header:
-- `admin-token` for administrative operations such as archive, redaction, and retention
+Authentication and authorization are now enforced for the sensitive endpoints. By default, the service accepts demo bearer tokens in the `Authorization` header:
+- `admin-token` for administrative operations such as archive, redaction, retention, and governance updates
 - `auditor-token` for read-only verification, export, and compliance-report endpoints
 - `operator-token` for creating new audit events
+
+If you prefer signed tokens, set `AUTH_MODE=jwt` and `JWT_SECRET=<strong-secret>`; the service will then validate HS256 bearer tokens with the same role claims (`admin`, `auditor`, or `operator`).
 
 Example:
 ```bash
@@ -159,6 +167,67 @@ curl -X POST http://127.0.0.1:8000/audit/events \
   -H "Content-Type: application/json" \
   -d '{"eventType":"USER_LOGIN","actorId":"user-1","resourceType":"account","resourceId":"acct-1","payload":{"ip":"127.0.0.1"}}'
 ```
+
+### Sample values for API testing
+The following examples use simple values you can paste into Swagger or curl for a quick smoke test.
+
+- Create event: `POST /audit/events`
+  - Body:
+    ```json
+    {
+      "eventType": "USER_LOGIN",
+      "actorId": "user-1",
+      "resourceType": "account",
+      "resourceId": "acct-1",
+      "payload": {"ip": "127.0.0.1", "userAgent": "Mozilla/5.0"},
+      "recordOwner": "team-security",
+      "dataClassification": "internal",
+      "retentionDays": 90,
+      "changeReason": "initial capture"
+    }
+    ```
+  - Auth: `operator-token`
+
+- List events: `GET /audit/events?actorId=user-1&resourceId=acct-1&eventType=USER_LOGIN&limit=10`
+  - Auth: use `Bearer auditor-token` for this endpoint. If you use `Bearer operator-token`, the service returns `{"detail":"forbidden"}` because list-events requires the `auditor-token` or `admin` role.
+
+- Verify chain: `GET /audit/verify`
+  - Auth: `Bearer auditor-token`
+
+- Archive event: `POST /audit/events/1/archive`
+  - Path value: `event_id=1`
+  - Auth: `Bearer admin-token`
+
+- Redact event: `POST /audit/events/1/redact`
+  - Body:
+    ```json
+    {
+      "fields": ["payload.ip"],
+      "reason": "privacy review"
+    }
+    ```
+  - Auth: `Bearer admin-token`
+
+- Apply retention: `POST /audit/events/retention/apply?olderThanDays=30`
+  - Auth: `Bearer admin-token`
+
+- Export events: `GET /audit/export?actorId=user-1&resourceId=acct-1`
+  - Auth: `Bearer auditor-token`
+
+- Update governance: `POST /audit/events/1/governance`
+  - Body:
+    ```json
+    {
+      "recordOwner": "compliance-team",
+      "dataClassification": "restricted",
+      "retentionDays": 180,
+      "changeReason": "policy update"
+    }
+    ```
+  - Auth: `Bearer admin-token`
+
+- Compliance report: `GET /audit/compliance/report?resourceId=acct-1&actorId=user-1`
+  - Auth: `Bearer auditor-token`
 
 ### Timestamp behavior
 The service uses the caller-supplied timestamp when provided; otherwise it assigns a UTC timestamp automatically. All responses also include lightweight security headers for reviewability and basic hardening.
@@ -203,7 +272,7 @@ The service also computes a `retentionPolicy`, `retentionExpiresAt`, and a `chan
 Run the test suite with:
 `python3 -m pytest -q`
 
-The Scenario A testing notes are documented in [TestingDocumentation.md](TestingDocumentation.md), and the smoke-test and evidence artifacts are generated at [api_test_report.html](api_test_report.html) and [reports/evidence_summary.md](reports/evidence_summary.md). The current automated suite reports 33 passed tests with 2 warnings.
+The Scenario A testing notes are documented in [TestingDocumentation.md](TestingDocumentation.md), and the smoke-test and evidence artifacts are generated at [api_test_report.html](api_test_report.html) and [reports/evidence_summary.md](reports/evidence_summary.md). The current automated suite reports 50 passed tests with 2 warnings.
 
 ## Scenario B and C documentation
 
@@ -315,8 +384,8 @@ Returns:
 ## Design Notes
 - The implementation reuses the existing audit log service and hash-chain verification model.
 - The report is scoped by `resourceId` and `actorId` to keep it reviewable and lightweight.
-- The prototype does not attempt to provide a full regulator-facing platform or a complete role-based compliance workflow.
-- The service also adds lightweight security headers and evidence artifacts to strengthen the review story without introducing heavyweight infrastructure.
+- The implementation does not attempt to provide a full regulator-facing platform or a complete enterprise compliance workflow.
+- The service also adds role-based access control, lightweight security headers, observability hooks, and evidence artifacts to strengthen the review story without introducing heavyweight infrastructure.
 
 ## Validation
 Run the test suite with:

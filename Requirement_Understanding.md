@@ -4,7 +4,7 @@
 Requirement Understanding: Interpret intent, identify ambiguity, normalize into a clear engineering problem.
 
 ## 1. Intent of the Assignment
-The assignment asks for a working prototype of a tamper-evident audit log service. The core goal is not only to build an API, but to demonstrate sound engineering judgment in translating a high-level business requirement into a concrete, testable system design.
+The assignment asks for a working audit log service with tamper-evident behavior. The core goal is not only to build an API, but to demonstrate sound engineering judgment in translating a high-level business requirement into a concrete, testable system design that can be reviewed and operated in a controlled environment.
 
 ## 2. Interpreted Business Need
 A system must record an append-only history of notable events such as user sign-ins, record updates, and permission changes. These events must be stored in a way that allows later verification that the history has not been silently altered. The system should support both operational querying and tamper-evidence validation.
@@ -25,12 +25,12 @@ To normalize the problem into a clear engineering task, the following assumption
 - The write API will accept a flexible structured payload object while enforcing the minimum required fields.
 - The verification endpoint will perform a full chain walk from the first record to the latest record.
 - The hash chain will be implemented using a simple previous-hash linkage with SHA-256.
-- The service will be built as a prototype with a focus on correctness, clarity, and testability over enterprise-scale optimization.
+- The service will be built as a reviewable implementation with a focus on correctness, clarity, and testability over enterprise-scale optimization.
 
 ## 5. Normalized Engineering Problem
 The problem can be framed as follows:
 
-Build a prototype audit log service as a monolithic REST API backed by a relational database, storing immutable event records, linking them through a verifiable hash chain, supporting querying and pagination, and exposing a verification endpoint that detects tampering. The service must also support a clear strategy for future extensions such as retention, redaction, and export.
+Build a reviewable audit log service as a monolithic REST API backed by a relational database, storing immutable event records, linking them through a verifiable hash chain, supporting querying and pagination, and exposing a verification endpoint that detects tampering. The service must also support a clear strategy for future extensions such as retention, redaction, and export.
 
 This normalization directly addresses the core requirements of requirement understanding, task decomposition, and engineering output generation by translating the ambiguous business need into a concrete design with explicit scope, assumptions, and validation criteria.
 
@@ -61,7 +61,7 @@ The implementation will be considered successful if it can:
 - Detect tampering when a stored record is modified directly
 
 ## 9. Summary
-The requirement is best understood as a prototype for an immutable, verifiable audit trail. The engineering task is to convert this into a simple, testable, and explainable system that proves tamper evidence without over-engineering the solution.
+The requirement is best understood as a controlled implementation for an immutable, verifiable audit trail. The engineering task is to convert this into a simple, testable, and explainable system that proves tamper evidence without over-engineering the solution.
 
 
 # Requirement Understanding – Scenario B
@@ -79,7 +79,7 @@ This document is based on the existing repository artifacts and the implemented 
 - [tests/test_audit_service.py](tests/test_audit_service.py)
 
 ## Original Intent
-Scenario B extends the core audit-log prototype with lifecycle controls that support review, retention, redaction, and export without breaking the tamper-evident chain.
+Scenario B extends the core audit-log implementation with lifecycle controls that support review, retention, redaction, and export without breaking the tamper-evident chain.
 
 The requirement is not fully specified, so the implementation focuses on a practical interpretation:
 - records may move to an archived state,
@@ -134,7 +134,7 @@ The service shall support lifecycle management for audit events by allowing reco
 - Keep the implementation within the existing audit log service rather than introducing a separate lifecycle subsystem.
 - Preserve the tamper-evident hash chain established in Scenario A.
 - Introduce explicit status and redaction metadata fields to support review workflows.
-- Keep retention and redaction operations simple and prototype-friendly.
+- Keep retention and redaction operations simple and review-friendly.
 
 ## Scope Boundaries
 Included in this prototype:

@@ -58,5 +58,5 @@ This document defines the database schema and API payload structure used by the 
 ```
 
 ## Notes
-- The implementation keeps the schema intentionally simple and suitable for a prototype.
+- The implementation keeps the schema intentionally simple while still supporting governance metadata, retention fields, and lifecycle state for a production-oriented review workflow.
 - The payload is stored as JSON text for flexibility and easier inspection.

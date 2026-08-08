@@ -20,7 +20,7 @@ Dependencies:
 ### Workstream 2: Data model and storage design
 - Define the schema for audit events.
 - Decide on fields such as eventType, actorId, resourceType, resourceId, payload, timestamp, prevHash, and currHash.
-- Choose a storage approach suitable for the recommended prototype architecture (SQLite or similar relational storage).
+- Choose a storage approach suitable for the recommended implementation architecture (SQLite for local use, PostgreSQL for a more production-like deployment).
 - Define how append-only semantics will be preserved in the monolithic service design.
 
 Dependencies:
@@ -73,7 +73,7 @@ Dependencies:
 
 Each workstream should be executed with a clear prompt that states intent, constraints, expected output, and validation criteria.
 
-- Workstream 1 prompt: "Help me set up a repository structure and documentation baseline for a monolithic audit log service prototype, with explicit traceability for AI-assisted work."
+- Workstream 1 prompt: "Help me set up a repository structure and documentation baseline for a monolithic audit log service implementation, with explicit traceability for AI-assisted work."
 - Workstream 2 prompt: "Help me design a relational schema and storage approach for append-only audit events, including fields for payload, timestamps, and hash-chain metadata."
 - Workstream 3 prompt: "Help me implement the write, query, and verification APIs for the recommended monolithic service architecture, while keeping the design simple and testable."
 - Workstream 4 prompt: "Help me implement SHA-256 hash-chain logic for append-only records and define how verification should detect the first broken link."
@@ -85,7 +85,7 @@ Each workstream should be executed with a clear prompt that states intent, const
 - Storage design must precede API implementation.
 - Hash-chain logic depends on the write path and storage design.
 - Testing depends on the core service being implemented.
-- Extensions and scenario planning depend on the core prototype being stable.
+- Extensions and scenario planning depend on the core service implementation being stable.
 
 ## 5. Acceptance Criteria for the Decomposition
 The task decomposition is complete when:
@@ -212,5 +212,5 @@ Decompose the Scenario C compliance-reporting extension into manageable workstre
 - Add traceability and engineering summary artifacts.
 
 ## Expected Outcome
-The Scenario C implementation should offer a lightweight and reviewable compliance-reporting feature that can be defended as a scoped prototype rather than a full regulator-facing platform.
+The Scenario C implementation should offer a lightweight and reviewable compliance-reporting feature that can be defended as a scoped, auditable capability rather than a full regulator-facing platform.
 

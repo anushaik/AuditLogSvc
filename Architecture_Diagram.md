@@ -8,10 +8,11 @@ This consolidated document brings together the architecture views for Scenario A
 ### High-Level Design
 
 ```text
-Client / Operator
+Client / Operator / Auditor / Admin
       │
       ▼
 FastAPI Service
+  ├─ Auth & RBAC layer
   ├─ Event Write API
   ├─ Event Query API
   └─ Verification API
@@ -25,20 +26,22 @@ Audit Event Store (SQLite or PostgreSQL)
   ├─ payload
   ├─ timestamp
   ├─ prevHash
-  └─ currHash
+  ├─ currHash
+  └─ governance / retention metadata
 ```
 
 ### Notes
 - Stores append-only audit events.
 - Uses a SHA-256 hash chain for tamper evidence.
 - Supports verification by replaying the chain from the first record.
+- Enforces role-based access and emits observability signals for review and operations.
 
 ## Scenario B – Lifecycle and Redaction Extensions
 
 ### High-Level Design
 
 ```text
-Client
+Client / Admin / Auditor
   │
   ▼
 FastAPI Service
@@ -54,20 +57,21 @@ Audit Event Store
   ├─ status
   ├─ redactedPayload
   ├─ redactionVersion
-  └─ redactionReason
+  ├─ redactionReason
+  └─ governance metadata
 ```
 
 ### Notes
 - Preserves the core hash-chain verification logic from Scenario A.
 - Introduces lifecycle states such as archived records.
-- Supports redaction and export workflows for review.
+- Supports redaction, export, and governance updates for review and compliance workflows.
 
 ## Scenario C – Compliance Reporting
 
 ### High-Level Design
 
 ```text
-Client / Reviewer
+Client / Reviewer / Auditor
       │
       ▼
 FastAPI Service
@@ -85,14 +89,14 @@ Audit Event Store
   ├─ payload
   ├─ timestamp
   ├─ prevHash / currHash
-  └─ status / redaction metadata
+  └─ status / governance / redaction metadata
 ```
 
 ### Notes
 - Reuses the existing audit log service rather than introducing a separate compliance platform.
 - Supports scoped reporting by resource and actor.
 - Returns event counts and event-type summaries for rapid compliance review.
-- The service also adds lightweight security headers and an evidence bundle for reviewability.
+- The service adds role-based access, security headers, metrics, and evidence-oriented export data for reviewability.
 
 ## Combined Summary
 The solution evolves from a simple tamper-evident audit log into a more extensible service that supports:
@@ -100,4 +104,6 @@ The solution evolves from a simple tamper-evident audit log into a more extensib
 - hash-chain verification,
 - archival and retention behavior,
 - redaction support,
-- and compliance reporting.
+- governance metadata updates,
+- compliance reporting,
+- and production-oriented observability and security controls.

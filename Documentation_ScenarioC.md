@@ -14,9 +14,9 @@ The endpoint returns:
 - an exported-at timestamp for reviewability
 
 ## Scope
-This prototype focuses on a minimum viable compliance view suitable for internal review and audit preparation, not a full regulatory platform.
+This implementation focuses on a minimum viable compliance view suitable for internal review and audit preparation, not a full regulatory platform. It is scoped to a reviewable, auditable workflow that can be deployed and validated in a controlled environment.
 
 ## Review and Evidence Notes
 - The compliance report is derived from the same append-only event records used by the core audit log, so its reviewability is anchored in the existing tamper-evidence chain.
 - The repository also includes a smoke-test HTML report and a markdown evidence summary to support review and handoff.
-- Lightweight security headers are applied to API responses to strengthen the prototype's posture without introducing a separate security layer.
+- The endpoint is protected by the same role-based access pattern used elsewhere in the service and is reinforced with lightweight security headers and observability hooks.

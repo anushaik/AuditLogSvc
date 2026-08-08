@@ -1,7 +1,7 @@
 # Scenario B API Documentation
 
 ## Overview
-Scenario B extends the audit log service with retention, structured redaction, and export support while preserving the original hash-chain verification model.
+Scenario B extends the audit log service with retention, structured redaction, export support, and governance-aware lifecycle controls while preserving the original hash-chain verification model.
 
 ## Endpoints
 
@@ -13,6 +13,7 @@ Scenario B extends the audit log service with retention, structured redaction, a
 ### 2. Redact sensitive fields
 - Method: POST
 - Path: /audit/events/{event_id}/redact
+- Required role: admin
 - Request body:
   ```json
   {
@@ -31,6 +32,7 @@ Scenario B extends the audit log service with retention, structured redaction, a
 ### 4. Export records
 - Method: GET
 - Path: /audit/export
+- Required role: auditor or admin
 - Query parameters: actorId, resourceType, resourceId, eventType
 - Purpose: Returns records and verification metadata in a self-contained export bundle.
 

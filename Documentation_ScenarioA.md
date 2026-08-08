@@ -1,13 +1,15 @@
 # Documentation – Scenario A
 
 ## Overview
-This document captures the implementation and validation details for the Scenario A audit log prototype. It summarizes the service purpose, API surface, data model, hashing approach, and test coverage based on the current repository artifacts.
+This document captures the implementation and validation details for the production-oriented Scenario A audit log service. It summarizes the service purpose, API surface, data model, hashing approach, security posture, and test coverage based on the current repository artifacts.
 
 ## Purpose
-The Scenario A service provides a tamper-evident audit log prototype that supports:
+The Scenario A service provides a tamper-evident audit log implementation that supports:
 - append-only event creation,
 - event retrieval with filtering and pagination,
-- chain verification for tamper detection.
+- chain verification for tamper detection,
+- authenticated access for operators, auditors, and administrators,
+- governance metadata and retention-related lifecycle handling.
 
 ## Architecture Summary
 The implementation is a lightweight FastAPI service backed by a relational database. The current repository supports SQLite by default and can also be configured for PostgreSQL.
@@ -98,4 +100,4 @@ python3 -m pytest -q
 ```
 
 ## Notes
-The Scenario A implementation is intentionally lightweight and prototype-oriented. It is designed to be easy to understand, run locally, and validate, while still demonstrating the core engineering requirements of append-only logging and tamper evidence.
+The Scenario A implementation is intentionally reviewable and production-oriented. It is designed to be easy to understand, run locally, and validate, while still demonstrating the core engineering requirements of append-only logging, tamper evidence, role-based access, operational observability, and governance readiness.

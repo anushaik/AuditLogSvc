@@ -3,10 +3,10 @@
 ## Overview
 This consolidated document combines the engineering summaries for Scenario A, Scenario B, and Scenario C into a single reference for the audit log service implementation.
 
-## Scenario A – Core Prototype
+## Scenario A – Production-Oriented Audit Service
 
 ### 1. Plan and Rationale
-The objective for Scenario A was to build a working, reviewable prototype of a tamper-evident audit log service that demonstrates the core requirements of the assignment: append-only event storage, queryability, and verifiable integrity. The implementation was designed as a lightweight monolithic REST service using FastAPI and SQLite so the solution could be delivered quickly, run locally, and remain easy to explain and validate.
+The objective for Scenario A was to build a working, reviewable audit log service that demonstrates the core requirements of the assignment: append-only event storage, queryability, and verifiable integrity. The implementation was designed as a lightweight monolithic REST service using FastAPI with configurable storage, production-oriented auth, security controls, observability, and governance metadata so the solution could be reviewed, exercised, and deployed in a controlled environment.
 
 The plan focused on:
 - interpreting the assignment into a clear implementation scope,
@@ -40,8 +40,8 @@ The service uses a simple layered design:
 Each record is hashed by combining the record’s content with the previous record’s hash using SHA-256. The first record uses a genesis marker, and each subsequent record links to the previous record’s hash. This creates a tamper-evident chain where any modification to an earlier record invalidates the following hashes.
 
 ### 5. Risks, Trade-offs, and Validation
-- SQLite was used for simplicity rather than enterprise-scale durability or concurrency.
-- The implementation focuses on correctness and demonstrable behavior rather than production-grade resilience.
+- SQLite remains the default local backend for simplicity, while PostgreSQL is supported as a more production-like deployment path.
+- The implementation focuses on correctness, reviewability, and operational safeguards rather than full enterprise-scale resilience or multi-region deployment.
 - Validation was performed by running python3 -m pytest -q and python3 api_test_runner.py.
 
 ## Scenario B – Lifecycle and Redaction Extensions
@@ -58,7 +58,7 @@ Scenario B was implemented as a minimal, pragmatic extension of the existing Sce
 ### Risks and Trade-offs
 - Redaction is metadata-based rather than a full versioned history model.
 - Retention is implemented as soft archival rather than physical deletion.
-- The current implementation is suitable for a prototype and reviewable engineering artifact rather than a fully production-hardened compliance store.
+- The current implementation is suitable for controlled internal deployment and review, while still remaining a monolithic service rather than a full enterprise-scale compliance platform.
 
 ### Validation
 Verified through automated tests and the API smoke runner:
@@ -82,8 +82,8 @@ Scenario C was implemented as a scoped compliance-reporting extension over the e
 ### Validation
 Verified through the automated test suite and the existing smoke-test runner.
 
-## Production Readiness Roadmap
-To evolve this prototype into a production-grade application, the next steps should be prioritized in a practical sequence:
+## Production Readiness Status
+The current implementation already incorporates many production-readiness controls, and the remaining gaps are primarily around scale, operational hardening, and broader enterprise integration rather than core functionality.
 
 1. Authentication and authorization
    - Protect write, archive, redact, export, and verification endpoints with authentication.

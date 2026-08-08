@@ -87,7 +87,7 @@ The implementation is considered successful if it can:
 - detect tampering after a record is modified directly in storage
 
 ## 7. Summary
-Scenario A should be implemented as a simple, correct, and explainable prototype that proves tamper-evident audit logging without over-engineering the solution. The core focus remains on append-only storage, queryability, and verifiable chain integrity.
+Scenario A should be implemented as a simple, correct, and explainable service that proves tamper-evident audit logging without over-engineering the solution. The core focus remains on append-only storage, queryability, verifiable chain integrity, and reviewable operational controls that support controlled deployment.
 
 # Requirement Analysis Scenario B 
 
@@ -249,7 +249,7 @@ The report should aggregate matching events by event type so reviewers can quick
 The compliance report must not replace or weaken the existing tamper-evident behavior of the audit log. The underlying chain verification remains intact.
 
 ## 3. Clarified Implementation Scope
-To make the requirement concrete for a prototype, the implementation will:
+To make the requirement concrete for a controlled implementation, the service will:
 - add a GET /audit/compliance/report endpoint,
 - filter records by resourceId and actorId,
 - aggregate matching events into an event-type summary,
@@ -265,11 +265,11 @@ The implementation reuses the existing audit log service and persistence layer. 
 - The report is suitable for internal review, regulator-style auditing, and evidence preparation.
 
 ## 5. Assumptions
-The following assumptions are made to keep the prototype practical:
+The following assumptions are made to keep the implementation practical:
 - “access” is interpreted as successful user-driven access-related audit events stored in the audit log.
 - The report is scoped to one resource and one actor at a time for clarity.
 - The report is intended for review and audit support, not for full regulatory workflow automation.
-- The service does not need to implement role-based access control or a full compliance dashboard for this prototype.
+- The service does not need to implement a full enterprise compliance dashboard or multi-region deployment model for this implementation.
 
 ## 6. Non-Functional Considerations
 The implementation should remain:

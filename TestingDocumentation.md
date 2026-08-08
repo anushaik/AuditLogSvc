@@ -12,19 +12,20 @@ The current approach is intentionally pragmatic. It validates the core behaviors
 - API-level validation for required fields and invalid payloads
 - End-to-end write, query, and verify behavior
 - Tamper detection by modifying stored data directly in the database
-- Security-header behavior for the health endpoint
-- Lifecycle and export-related behavior that extends the core Scenario A flow
+- Security-header behavior and payload-size guardrails for the HTTP layer
+- Role-based access behavior for operator, auditor, and admin workflows
+- Governance, retention, archive, redact, export, and compliance-report behavior
 - Smoke-test generation for a review-friendly HTML and Markdown evidence report
 
 ### What is not covered yet
-- Load testing or concurrent request testing
+- Load testing or concurrent request testing at production scale
 - Performance benchmarking against real production-scale traffic
-- Security testing beyond basic input validation and header checks
+- Security testing beyond basic input validation, header checks, and auth enforcement
 - Recovery testing for database failure, corruption, or partial outages
-- Multi-user or role-based authorization testing
+- Full multi-tenant or distributed deployment validation
 
 ### Why this scope was chosen
-The implementation is a working prototype rather than a full production platform. The tests focus on correctness of the core requirements, tamper evidence, and reviewability so the behavior can be demonstrated quickly and clearly without introducing heavy infrastructure or brittle test dependencies.
+The implementation is a reviewable production-oriented service rather than a full enterprise platform. The tests focus on correctness of the core requirements, tamper evidence, and reviewability while still covering the operational safeguards and governance flows expected for controlled deployment.
 
 ## Automated Tests
 The main automated suite is implemented in [tests/test_audit_service.py](tests/test_audit_service.py).
@@ -75,7 +76,7 @@ python3 -m pytest -q
 
 ## Current Result
 Verified result:
-- 33 tests passed in the current suite, with 2 warnings from the current dependency stack
+- 50 tests passed in the current suite, with 2 warnings from the current dependency stack
 
 ## Trade-offs and limitations
 - The test suite is fast and self-contained, which is ideal for local review and assignment delivery.

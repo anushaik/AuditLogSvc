@@ -15,7 +15,7 @@ Use a monolithic REST service backed by a relational database, with an append-on
 
 ### 1.2 Define implementation baseline
 - Confirm the selected stack: Python + FastAPI or Node.js + Express.
-- Choose SQLite for the prototype and document the reason.
+- Choose SQLite for local readiness and document the reason, while noting PostgreSQL as the preferred production-oriented backend.
 - Define the initial API contract for write, query, and verify endpoints.
 
 ### 1.3 Capture requirements explicitly
@@ -119,10 +119,10 @@ Use a monolithic REST service backed by a relational database, with an append-on
 ### 7.2 Final verification
 - Re-run the full test suite.
 - Verify the README, architecture notes, and AI usage traceability are aligned.
-- Confirm the prototype is runnable and demonstrably supports Scenario A end to end.
+- Confirm the service is runnable and demonstrably supports Scenario A end to end.
 
 ## Deliverables
-- Working prototype for Scenario A
+- Working implementation for Scenario A
 - API endpoints for write, query, and verify
 - Hash-chain implementation with tamper detection
 - Unit and integration tests

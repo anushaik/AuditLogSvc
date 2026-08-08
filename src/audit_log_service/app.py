@@ -22,8 +22,10 @@ from starlette.middleware.cors import CORSMiddleware
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi import status
+from fastapi.openapi.utils import get_openapi
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from starlette.responses import JSONResponse, Response
 
 from .database import get_connection, init_db, release_connection
@@ -40,6 +42,8 @@ from .schemas import (
 
 
 request_id_context: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar("request_id", default=None)
+WRITE_LOCK = threading.RLock()
+bearer_scheme = HTTPBearer(auto_error=False)
 
 
 class CorrelationIdFilter(logging.Filter):
@@ -321,8 +325,36 @@ async def lifespan(app: FastAPI):
         app.state.logger.info("shutting_down_application")
 
 
+def _build_openapi_schema(app: FastAPI):
+    if app.openapi_schema:
+        return app.openapi_schema
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version or "1.0.0",
+        openapi_version=app.openapi_version,
+        description=app.description,
+        routes=app.routes,
+    )
+    openapi_schema.setdefault("components", {}).setdefault("securitySchemes", {})["BearerAuth"] = {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+    }
+    openapi_schema["security"] = [{"BearerAuth": []}]
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
+def get_bearer_credentials(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
+) -> Optional[HTTPAuthorizationCredentials]:
+    return credentials
+
+
 def create_app(db_path: str = "audit.db") -> FastAPI:
     app = FastAPI(title="Audit Log Service", lifespan=lifespan)
+    app.swagger_ui_parameters = {"persistAuthorization": True}
+    app.openapi = lambda: _build_openapi_schema(app)
     app.state.db_path = db_path
     app.state.db_backend = os.getenv("DB_BACKEND", "sqlite")
     app.state.enforce_https = os.getenv("ENFORCE_HTTPS", "false").lower() in {"1", "true", "yes", "on"}
@@ -517,7 +549,7 @@ def create_app(db_path: str = "audit.db") -> FastAPI:
         conn = None
         try:
             conn = get_connection(db_path)
-            with request.app.state.write_lock:
+            with WRITE_LOCK:
                 conn.begin()
                 timestamp = event.timestamp or datetime.now(timezone.utc).isoformat()
                 prev_row = conn.execute(
@@ -673,132 +705,133 @@ def create_app(db_path: str = "audit.db") -> FastAPI:
         conn = None
         try:
             conn = get_connection(db_path)
-            row = conn.execute("SELECT * FROM audit_events WHERE id = ?", (event_id,)).fetchone()
-            if row is None:
-                raise HTTPException(status_code=404, detail="event not found")
+            with WRITE_LOCK:
+                row = conn.execute("SELECT * FROM audit_events WHERE id = ?", (event_id,)).fetchone()
+                if row is None:
+                    raise HTTPException(status_code=404, detail="event not found")
 
-            record_owner = governance.recordOwner or row["recordOwner"] or "unassigned"
-            data_classification = governance.dataClassification or row["dataClassification"] or "internal"
-            retention_days = governance.retentionDays if governance.retentionDays is not None else row["retentionDays"]
-            retention_policy = resolve_retention_policy(retention_days, data_classification)
-            retention_expires_at = compute_retention_expires_at(row["timestamp"], retention_days)
-            governance_updated_at = datetime.now(timezone.utc).isoformat()
-            change_count = (row["changeCount"] or 0) + 1
-            change_reason = governance.changeReason or row["changeReason"] or "governance update"
-            policy_decision = apply_retention_policy_rules({
-                "timestamp": row["timestamp"],
-                "recordOwner": record_owner,
-                "dataClassification": data_classification,
-                "retentionDays": retention_days,
-            })
-            before_payload = {
-                "recordOwner": row["recordOwner"],
-                "dataClassification": row["dataClassification"],
-                "retentionDays": row["retentionDays"],
-                "retentionPolicy": row["retentionPolicy"],
-                "retentionExpiresAt": row["retentionExpiresAt"],
-            }
-            after_payload = {
-                "recordOwner": record_owner,
-                "dataClassification": data_classification,
-                "retentionDays": retention_days,
-                "retentionPolicy": policy_decision["retentionPolicy"],
-                "retentionExpiresAt": retention_expires_at,
-                "requiresReview": policy_decision["requiresReview"],
-            }
-
-            updated_hash = compute_hash(
-                {
-                    "eventType": row["eventType"],
-                    "actorId": row["actorId"],
-                    "resourceType": row["resourceType"],
-                    "resourceId": row["resourceId"],
-                    "payload": _decrypt_payload(row["payload"]),
+                record_owner = governance.recordOwner or row["recordOwner"] or "unassigned"
+                data_classification = governance.dataClassification or row["dataClassification"] or "internal"
+                retention_days = governance.retentionDays if governance.retentionDays is not None else row["retentionDays"]
+                retention_policy = resolve_retention_policy(retention_days, data_classification)
+                retention_expires_at = compute_retention_expires_at(row["timestamp"], retention_days)
+                governance_updated_at = datetime.now(timezone.utc).isoformat()
+                change_count = (row["changeCount"] or 0) + 1
+                change_reason = governance.changeReason or row["changeReason"] or "governance update"
+                policy_decision = apply_retention_policy_rules({
                     "timestamp": row["timestamp"],
                     "recordOwner": record_owner,
                     "dataClassification": data_classification,
                     "retentionDays": retention_days,
-                    "retentionPolicy": retention_policy,
-                    "retentionExpiresAt": retention_expires_at,
-                    "changeReason": change_reason,
-                },
-                row["prevHash"],
-            )
-            conn.execute(
-                """
-                UPDATE audit_events
-                SET recordOwner = ?, dataClassification = ?, retentionDays = ?, retentionPolicy = ?,
-                    retentionExpiresAt = ?, changeCount = ?, changeReason = ?, governanceUpdatedAt = ?, currHash = ?
-                WHERE id = ?
-                """,
-                (
-                    record_owner,
-                    data_classification,
-                    retention_days,
-                    retention_policy,
-                    retention_expires_at,
-                    change_count,
-                    change_reason,
-                    governance_updated_at,
-                    updated_hash,
-                    event_id,
-                ),
-            )
-            prev_hash = updated_hash
-            governance_payload = build_governance_audit_payload(event_id, before_payload, after_payload, change_reason)
-            governance_hash = compute_hash(
-                {
-                    "eventType": "GOVERNANCE_CHANGE",
-                    "actorId": request.headers.get("x-forwarded-for") or (request.client.host if request.client else "system"),
-                    "resourceType": "governance",
-                    "resourceId": f"event-{event_id}",
-                    "payload": governance_payload,
-                    "timestamp": governance_updated_at,
+                })
+                before_payload = {
+                    "recordOwner": row["recordOwner"],
+                    "dataClassification": row["dataClassification"],
+                    "retentionDays": row["retentionDays"],
+                    "retentionPolicy": row["retentionPolicy"],
+                    "retentionExpiresAt": row["retentionExpiresAt"],
+                }
+                after_payload = {
                     "recordOwner": record_owner,
                     "dataClassification": data_classification,
                     "retentionDays": retention_days,
                     "retentionPolicy": policy_decision["retentionPolicy"],
                     "retentionExpiresAt": retention_expires_at,
-                    "changeReason": change_reason,
-                },
-                prev_hash,
-            )
-            conn.execute(
-                """
-                INSERT INTO audit_events (
-                    eventType, actorId, resourceType, resourceId, payload, timestamp, prevHash, currHash,
-                    status, redactedPayload, redactionVersion, redactionReason,
-                    recordOwner, dataClassification, retentionDays, retentionPolicy,
-                    retentionExpiresAt, changeCount, changeReason, governanceUpdatedAt
+                    "requiresReview": policy_decision["requiresReview"],
+                }
+
+                updated_hash = compute_hash(
+                    {
+                        "eventType": row["eventType"],
+                        "actorId": row["actorId"],
+                        "resourceType": row["resourceType"],
+                        "resourceId": row["resourceId"],
+                        "payload": _decrypt_payload(row["payload"]),
+                        "timestamp": row["timestamp"],
+                        "recordOwner": record_owner,
+                        "dataClassification": data_classification,
+                        "retentionDays": retention_days,
+                        "retentionPolicy": retention_policy,
+                        "retentionExpiresAt": retention_expires_at,
+                        "changeReason": change_reason,
+                    },
+                    row["prevHash"],
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    "GOVERNANCE_CHANGE",
-                    request.headers.get("x-forwarded-for") or (request.client.host if request.client else "system"),
-                    "governance",
-                    f"event-{event_id}",
-                    json.dumps(governance_payload),
-                    governance_updated_at,
+                conn.execute(
+                    """
+                    UPDATE audit_events
+                    SET recordOwner = ?, dataClassification = ?, retentionDays = ?, retentionPolicy = ?,
+                        retentionExpiresAt = ?, changeCount = ?, changeReason = ?, governanceUpdatedAt = ?, currHash = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        record_owner,
+                        data_classification,
+                        retention_days,
+                        retention_policy,
+                        retention_expires_at,
+                        change_count,
+                        change_reason,
+                        governance_updated_at,
+                        updated_hash,
+                        event_id,
+                    ),
+                )
+                prev_hash = updated_hash
+                governance_payload = build_governance_audit_payload(event_id, before_payload, after_payload, change_reason)
+                governance_hash = compute_hash(
+                    {
+                        "eventType": "GOVERNANCE_CHANGE",
+                        "actorId": request.headers.get("x-forwarded-for") or (request.client.host if request.client else "system"),
+                        "resourceType": "governance",
+                        "resourceId": f"event-{event_id}",
+                        "payload": governance_payload,
+                        "timestamp": governance_updated_at,
+                        "recordOwner": record_owner,
+                        "dataClassification": data_classification,
+                        "retentionDays": retention_days,
+                        "retentionPolicy": policy_decision["retentionPolicy"],
+                        "retentionExpiresAt": retention_expires_at,
+                        "changeReason": change_reason,
+                    },
                     prev_hash,
-                    governance_hash,
-                    "active",
-                    None,
-                    0,
-                    None,
-                    record_owner,
-                    data_classification,
-                    retention_days,
-                    policy_decision["retentionPolicy"],
-                    retention_expires_at,
-                    1,
-                    change_reason,
-                    governance_updated_at,
-                ),
-            )
-            conn.commit()
-            updated = conn.execute("SELECT * FROM audit_events WHERE id = ?", (event_id,)).fetchone()
-            return serialise_row(updated)
+                )
+                conn.execute(
+                    """
+                    INSERT INTO audit_events (
+                        eventType, actorId, resourceType, resourceId, payload, timestamp, prevHash, currHash,
+                        status, redactedPayload, redactionVersion, redactionReason,
+                        recordOwner, dataClassification, retentionDays, retentionPolicy,
+                        retentionExpiresAt, changeCount, changeReason, governanceUpdatedAt
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        "GOVERNANCE_CHANGE",
+                        request.headers.get("x-forwarded-for") or (request.client.host if request.client else "system"),
+                        "governance",
+                        f"event-{event_id}",
+                        json.dumps(governance_payload),
+                        governance_updated_at,
+                        prev_hash,
+                        governance_hash,
+                        "active",
+                        None,
+                        0,
+                        None,
+                        record_owner,
+                        data_classification,
+                        retention_days,
+                        policy_decision["retentionPolicy"],
+                        retention_expires_at,
+                        1,
+                        change_reason,
+                        governance_updated_at,
+                    ),
+                )
+                conn.commit()
+                updated = conn.execute("SELECT * FROM audit_events WHERE id = ?", (event_id,)).fetchone()
+                return serialise_row(updated)
         except Exception as exc:
             _handle_database_error(exc)
         finally:
@@ -812,75 +845,76 @@ def create_app(db_path: str = "audit.db") -> FastAPI:
         conn = None
         try:
             conn = get_connection(db_path)
-            row = conn.execute("SELECT * FROM audit_events WHERE id = ?", (event_id,)).fetchone()
-            if row is None:
-                raise HTTPException(status_code=404, detail="event not found")
+            with WRITE_LOCK:
+                row = conn.execute("SELECT * FROM audit_events WHERE id = ?", (event_id,)).fetchone()
+                if row is None:
+                    raise HTTPException(status_code=404, detail="event not found")
 
-            review_payload = {
-                "event_id": event_id,
-                "decision": review.decision,
-                "reviewer": review.reviewer,
-                "justification": review.justification,
-                "recordOwner": row["recordOwner"],
-                "dataClassification": row["dataClassification"],
-                "retentionDays": row["retentionDays"],
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            }
-            prev_row = conn.execute("SELECT currHash FROM audit_events ORDER BY id DESC LIMIT 1").fetchone()
-            prev_hash = prev_row["currHash"] if prev_row else "GENESIS"
-            curr_hash = compute_hash(
-                {
-                    "eventType": "ACCESS_REVIEW",
-                    "actorId": review.reviewer,
-                    "resourceType": "governance",
-                    "resourceId": f"event-{event_id}",
-                    "payload": review_payload,
-                    "timestamp": review_payload["timestamp"],
+                review_payload = {
+                    "event_id": event_id,
+                    "decision": review.decision,
+                    "reviewer": review.reviewer,
+                    "justification": review.justification,
                     "recordOwner": row["recordOwner"],
                     "dataClassification": row["dataClassification"],
                     "retentionDays": row["retentionDays"],
-                    "retentionPolicy": row["retentionPolicy"],
-                    "retentionExpiresAt": row["retentionExpiresAt"],
-                    "changeReason": review.justification,
-                },
-                prev_hash,
-            )
-            conn.execute(
-                """
-                INSERT INTO audit_events (
-                    eventType, actorId, resourceType, resourceId, payload, timestamp, prevHash, currHash,
-                    status, redactedPayload, redactionVersion, redactionReason,
-                    recordOwner, dataClassification, retentionDays, retentionPolicy,
-                    retentionExpiresAt, changeCount, changeReason, governanceUpdatedAt
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    "ACCESS_REVIEW",
-                    review.reviewer,
-                    "governance",
-                    f"event-{event_id}",
-                    json.dumps(review_payload),
-                    review_payload["timestamp"],
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+                prev_row = conn.execute("SELECT currHash FROM audit_events ORDER BY id DESC LIMIT 1").fetchone()
+                prev_hash = prev_row["currHash"] if prev_row else "GENESIS"
+                curr_hash = compute_hash(
+                    {
+                        "eventType": "ACCESS_REVIEW",
+                        "actorId": review.reviewer,
+                        "resourceType": "governance",
+                        "resourceId": f"event-{event_id}",
+                        "payload": review_payload,
+                        "timestamp": review_payload["timestamp"],
+                        "recordOwner": row["recordOwner"],
+                        "dataClassification": row["dataClassification"],
+                        "retentionDays": row["retentionDays"],
+                        "retentionPolicy": row["retentionPolicy"],
+                        "retentionExpiresAt": row["retentionExpiresAt"],
+                        "changeReason": review.justification,
+                    },
                     prev_hash,
-                    curr_hash,
-                    "active",
-                    None,
-                    0,
-                    None,
-                    row["recordOwner"],
-                    row["dataClassification"],
-                    row["retentionDays"],
-                    row["retentionPolicy"],
-                    row["retentionExpiresAt"],
-                    0,
-                    review.justification,
-                    review_payload["timestamp"],
-                ),
-            )
-            conn.commit()
-            review_row = conn.execute("SELECT * FROM audit_events WHERE currHash = ?", (curr_hash,)).fetchone()
-            return serialise_row(review_row)
+                )
+                conn.execute(
+                    """
+                    INSERT INTO audit_events (
+                        eventType, actorId, resourceType, resourceId, payload, timestamp, prevHash, currHash,
+                        status, redactedPayload, redactionVersion, redactionReason,
+                        recordOwner, dataClassification, retentionDays, retentionPolicy,
+                        retentionExpiresAt, changeCount, changeReason, governanceUpdatedAt
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        "ACCESS_REVIEW",
+                        review.reviewer,
+                        "governance",
+                        f"event-{event_id}",
+                        json.dumps(review_payload),
+                        review_payload["timestamp"],
+                        prev_hash,
+                        curr_hash,
+                        "active",
+                        None,
+                        0,
+                        None,
+                        row["recordOwner"],
+                        row["dataClassification"],
+                        row["retentionDays"],
+                        row["retentionPolicy"],
+                        row["retentionExpiresAt"],
+                        0,
+                        review.justification,
+                        review_payload["timestamp"],
+                    ),
+                )
+                conn.commit()
+                review_row = conn.execute("SELECT * FROM audit_events WHERE currHash = ?", (curr_hash,)).fetchone()
+                return serialise_row(review_row)
         except Exception as exc:
             _handle_database_error(exc)
         finally:
@@ -894,12 +928,13 @@ def create_app(db_path: str = "audit.db") -> FastAPI:
         conn = None
         try:
             conn = get_connection(db_path)
-            cursor = conn.execute("UPDATE audit_events SET status = ? WHERE id = ?", ("archived", event_id))
-            conn.commit()
-            if cursor.rowcount in (0, None):
-                raise HTTPException(status_code=404, detail="event not found")
-            row = conn.execute("SELECT * FROM audit_events WHERE id = ?", (event_id,)).fetchone()
-            return {"id": row["id"], "status": row["status"]}
+            with WRITE_LOCK:
+                cursor = conn.execute("UPDATE audit_events SET status = ? WHERE id = ?", ("archived", event_id))
+                conn.commit()
+                if cursor.rowcount in (0, None):
+                    raise HTTPException(status_code=404, detail="event not found")
+                row = conn.execute("SELECT * FROM audit_events WHERE id = ?", (event_id,)).fetchone()
+                return {"id": row["id"], "status": row["status"]}
         except Exception as exc:
             _handle_database_error(exc)
         finally:
@@ -913,32 +948,33 @@ def create_app(db_path: str = "audit.db") -> FastAPI:
         conn = None
         try:
             conn = get_connection(db_path)
-            row = conn.execute("SELECT * FROM audit_events WHERE id = ?", (event_id,)).fetchone()
-            if row is None:
-                raise HTTPException(status_code=404, detail="event not found")
+            with WRITE_LOCK:
+                row = conn.execute("SELECT * FROM audit_events WHERE id = ?", (event_id,)).fetchone()
+                if row is None:
+                    raise HTTPException(status_code=404, detail="event not found")
 
-            current_payload = json.loads(row["payload"]) if row["payload"] else {}
-            redacted_payload = dict(current_payload)
-            for field in payload.fields:
-                redacted_payload[field] = "[REDACTED]"
-            next_version = (row["redactionVersion"] or 0) + 1
-            conn.execute(
-                """
-                UPDATE audit_events
-                SET redactedPayload = ?, redactionVersion = ?, redactionReason = ?
-                WHERE id = ?
-                """,
-                (json.dumps(redacted_payload), next_version, payload.reason, event_id),
-            )
-            conn.commit()
-            updated = conn.execute("SELECT * FROM audit_events WHERE id = ?", (event_id,)).fetchone()
-            return {
-                "id": updated["id"],
-                "status": updated["status"],
-                "redactedPayload": json.loads(updated["redactedPayload"]),
-                "redactionVersion": updated["redactionVersion"],
-                "redactionReason": updated["redactionReason"],
-            }
+                current_payload = json.loads(row["payload"]) if row["payload"] else {}
+                redacted_payload = dict(current_payload)
+                for field in payload.fields:
+                    redacted_payload[field] = "[REDACTED]"
+                next_version = (row["redactionVersion"] or 0) + 1
+                conn.execute(
+                    """
+                    UPDATE audit_events
+                    SET redactedPayload = ?, redactionVersion = ?, redactionReason = ?
+                    WHERE id = ?
+                    """,
+                    (json.dumps(redacted_payload), next_version, payload.reason, event_id),
+                )
+                conn.commit()
+                updated = conn.execute("SELECT * FROM audit_events WHERE id = ?", (event_id,)).fetchone()
+                return {
+                    "id": updated["id"],
+                    "status": updated["status"],
+                    "redactedPayload": json.loads(updated["redactedPayload"]),
+                    "redactionVersion": updated["redactionVersion"],
+                    "redactionReason": updated["redactionReason"],
+                }
         except Exception as exc:
             _handle_database_error(exc)
         finally:
@@ -955,31 +991,32 @@ def create_app(db_path: str = "audit.db") -> FastAPI:
         conn = None
         try:
             conn = get_connection(db_path)
-            cutoff = datetime.now(timezone.utc) - timedelta(days=olderThanDays)
-            rows = conn.execute("SELECT id, timestamp, status, retentionExpiresAt FROM audit_events ORDER BY id ASC").fetchall()
-            eligible_ids = []
-            now = datetime.now(timezone.utc)
-            for row in rows:
-                try:
-                    created_at = parse_timestamp(row["timestamp"])
-                except ValueError:
-                    continue
-                retention_expires_at = None
-                if row["retentionExpiresAt"]:
+            with WRITE_LOCK:
+                cutoff = datetime.now(timezone.utc) - timedelta(days=olderThanDays)
+                rows = conn.execute("SELECT id, timestamp, status, retentionExpiresAt FROM audit_events ORDER BY id ASC").fetchall()
+                eligible_ids = []
+                now = datetime.now(timezone.utc)
+                for row in rows:
                     try:
-                        retention_expires_at = parse_timestamp(row["retentionExpiresAt"])
+                        created_at = parse_timestamp(row["timestamp"])
                     except ValueError:
-                        retention_expires_at = None
-                if row["status"] != "archived" and (created_at < cutoff or (retention_expires_at is not None and retention_expires_at < now)):
-                    eligible_ids.append(row["id"])
-            if eligible_ids:
-                placeholders = ", ".join(["?"] * len(eligible_ids))
-                conn.execute(
-                    f"UPDATE audit_events SET status = 'archived' WHERE id IN ({placeholders}) AND status != 'archived'",
-                    eligible_ids,
-                )
-                conn.commit()
-            return {"archivedCount": len(eligible_ids), "ids": eligible_ids}
+                        continue
+                    retention_expires_at = None
+                    if row["retentionExpiresAt"]:
+                        try:
+                            retention_expires_at = parse_timestamp(row["retentionExpiresAt"])
+                        except ValueError:
+                            retention_expires_at = None
+                    if row["status"] != "archived" and (created_at < cutoff or (retention_expires_at is not None and retention_expires_at < now)):
+                        eligible_ids.append(row["id"])
+                if eligible_ids:
+                    placeholders = ", ".join(["?"] * len(eligible_ids))
+                    conn.execute(
+                        f"UPDATE audit_events SET status = 'archived' WHERE id IN ({placeholders}) AND status != 'archived'",
+                        eligible_ids,
+                    )
+                    conn.commit()
+                return {"archivedCount": len(eligible_ids), "ids": eligible_ids}
         except Exception as exc:
             _handle_database_error(exc)
         finally:
