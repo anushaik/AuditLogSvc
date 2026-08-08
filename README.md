@@ -96,3 +96,90 @@ This workflow is intended to support the assignment's AI-assisted execution expe
   - `partial`
 - Automatic entry:
   Commit your changes and the post-commit hook will append a basic entry for you.
+
+
+  # Scenario B README
+
+## Overview
+Scenario B extends the original tamper-evident audit log service with three additional operational capabilities:
+
+- retention and archival of older records
+- structured redaction of sensitive payload fields
+- export of records as a verifiable bundle
+
+## Supported API Endpoints
+
+### Archive a record
+POST /audit/events/{event_id}/archive
+
+Marks a specific record as archived.
+
+### Redact sensitive fields
+POST /audit/events/{event_id}/redact
+
+Body example:
+```json
+{
+  "fields": ["secret"],
+  "reason": "pii"
+}
+```
+
+The service stores a redacted copy of the payload and records the redaction version and reason.
+
+### Apply retention policy
+POST /audit/events/retention/apply?olderThanDays=30
+
+Archives records older than the requested age threshold.
+
+### Export records
+GET /audit/export?actorId=user-1
+
+Returns a bundle containing:
+- the matching records
+- verification metadata
+- the export timestamp
+
+## Notes
+- The existing hash-chain verification remains intact for the underlying record chain.
+- Redaction is implemented as metadata-based redaction rather than rewriting the original chain.
+- The implementation follows the recommended minimal-extension approach from the Scenario B design analysis.
+
+## Validation
+Run the test suite with:
+```bash
+python3 -m pytest -q
+```
+
+# Scenario C README
+
+## Overview
+Scenario C adds a scoped compliance-reporting capability to the audit log service. The implementation focuses on a minimum viable interpretation of the ambiguous requirement: provide an auditable summary of access-related events for a selected account resource and actor.
+
+## Supported Endpoint
+
+### Compliance report
+GET /audit/compliance/report?resourceId=<account-id>&actorId=<actor-id>
+
+Returns:
+- the selected resource ID and actor ID
+- the total number of matching access events
+- an event-type summary with counts
+- an exported-at timestamp for reviewability
+
+## Design Notes
+- The implementation reuses the existing audit log service and hash-chain verification model.
+- The report is scoped by `resourceId` and `actorId` to keep it reviewable and lightweight.
+- The prototype does not attempt to provide a full regulator-facing platform or a complete role-based compliance workflow.
+
+## Validation
+Run the test suite with:
+```bash
+python3 -m pytest -q
+```
+
+Additional documentation for this scenario is available in:
+- [Requirement_Understanding_ScenarioC.md](Requirement_Understanding_ScenarioC.md)
+- [Architecture_Diagram_ScenarioC.md](Architecture_Diagram_ScenarioC.md)
+- [ScenarioC_Documentation.md](ScenarioC_Documentation.md)
+
