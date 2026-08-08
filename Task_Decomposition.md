@@ -96,3 +96,121 @@ The task decomposition is complete when:
 
 ## 6. Summary
 The assignment should be executed as a staged build: foundation first, core monolithic service second, verification third, validation fourth, and extensions last. This sequencing keeps the work manageable and ensures that the core tamper-evidence behavior is proven before additional complexity is added.
+
+# Task Decomposition – Scenario B
+
+## Objective
+Break the Scenario B extension into a practical sequence of implementation tasks that build on the existing Scenario A audit log service and add lifecycle, retention, redaction, and export capabilities without breaking the tamper-evident chain.
+
+## 1. Core Intent
+Scenario B extends the base service with review-oriented lifecycle behaviors. The implementation should support:
+- archival state for older or retained records,
+- structured redaction of selected payload fields,
+- retention operations that apply policy to existing records,
+- export of filtered records with verification metadata.
+
+## 2. Workstreams
+
+### Workstream 1: Extend the data model
+- Add status fields needed to track archived or active records.
+- Add redaction metadata fields such as redactedPayload, redactionVersion, and redactionReason.
+- Ensure the persistence layer remains compatible with the existing hash-chain structure.
+
+Dependencies:
+- Depends on the existing Scenario A schema and storage layer.
+
+### Workstream 2: Implement archival behavior
+- Add an endpoint to mark a record as archived.
+- Ensure the service returns a clear status response after the update.
+- Keep the change isolated from the hash-chain verification logic.
+
+Dependencies:
+- Depends on the extended data model.
+
+### Workstream 3: Implement redaction behavior
+- Add an endpoint that accepts a set of fields to redact.
+- Replace the selected values with a placeholder and store the redaction metadata.
+- Ensure the operation is review-friendly and does not break the stored integrity model.
+
+Dependencies:
+- Depends on the data model and existing event storage.
+
+### Workstream 4: Implement retention workflow
+- Add an endpoint that applies retention logic to existing records.
+- Use a time-based rule to identify older records for archival.
+- Return a response that lists the archived record IDs and count.
+
+Dependencies:
+- Depends on archival behavior and the event store.
+
+### Workstream 5: Implement export workflow
+- Add an export endpoint that returns matching records for a selected scope.
+- Include verification metadata from the existing chain-validation logic.
+- Return the export in a structure that is suitable for review or handoff.
+
+Dependencies:
+- Depends on query logic and verification logic.
+
+### Workstream 6: Add validation and documentation
+- Add regression tests for archive, redact, retention, and export flows.
+- Update the smoke-test report to cover the new endpoints.
+- Document the design choices, risks, and scope boundaries for Scenario B.
+
+Dependencies:
+- Depends on the full implementation being available.
+
+## 3. Recommended Execution Sequence
+1. Extend the schema and persistence layer.
+2. Implement archival behavior.
+3. Implement redaction behavior.
+4. Implement retention workflow.
+5. Implement export workflow.
+6. Add tests and documentation.
+
+## 4. Acceptance Criteria
+The Scenario B task decomposition is complete when:
+- the service can archive records,
+- the service can redact selected fields and store the metadata,
+- retention can be applied to eligible records,
+- exports contain the expected audit records and verification details,
+- the existing hash-chain verification remains intact.
+
+## 5. Summary
+Scenario B should be executed as an incremental extension of the existing Scenario A service: first extend the model, then add lifecycle behavior, then add review and export capabilities, and finally validate everything end to end.
+
+
+# Task Decomposition – Scenario C
+
+## Objective
+Decompose the Scenario C compliance-reporting extension into manageable workstreams that can be implemented and reviewed incrementally.
+
+## Workstreams
+
+### 1. Clarify the requirement
+- Review the ambiguous compliance requirement.
+- Transform it into a scoped minimum viable interpretation.
+- Document assumptions, open questions, and implementation boundaries.
+
+### 2. Extend the service contract
+- Add a compliance report endpoint.
+- Define the request parameters and response structure.
+- Keep the implementation aligned with the existing audit log model.
+
+### 3. Implement report aggregation
+- Filter events by `resourceId` and `actorId`.
+- Aggregate results by event type.
+- Return a concise, reviewable report payload.
+
+### 4. Add validation tests
+- Create tests for successful report generation.
+- Validate filtering and aggregation behavior.
+- Ensure the existing audit-chain behavior remains intact.
+
+### 5. Document the design and outcomes
+- Add requirement understanding notes.
+- Add architecture and testing documentation.
+- Add traceability and engineering summary artifacts.
+
+## Expected Outcome
+The Scenario C implementation should offer a lightweight and reviewable compliance-reporting feature that can be defended as a scoped prototype rather than a full regulator-facing platform.
+
