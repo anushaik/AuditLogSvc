@@ -7,7 +7,14 @@ from typing import Any, Dict, List, Optional
 from fastapi import FastAPI, HTTPException, Query, Request
 
 from .database import get_connection, init_db
-from .schemas import AuditEventIn, AuditEventOut, ExportBundle, RedactionRequest, VerificationResult
+from .schemas import (
+    AuditEventIn,
+    AuditEventOut,
+    ComplianceReport,
+    ExportBundle,
+    RedactionRequest,
+    VerificationResult,
+)
 
 
 def compute_hash(payload: Dict[str, Any], prev_hash: str) -> str:
@@ -277,6 +284,39 @@ def create_app(db_path: str = "audit.db") -> FastAPI:
                 )
                 conn.commit()
             return {"archivedCount": len(eligible_ids), "ids": eligible_ids}
+        finally:
+            conn.close()
+
+    @app.get("/audit/compliance/report", response_model=ComplianceReport)
+    def compliance_report(
+        request: Request,
+        resourceId: Optional[str] = None,
+        actorId: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        db_path = request.app.state.db_path
+        conn = get_connection(db_path)
+        try:
+            query = "SELECT eventType, actorId, resourceId FROM audit_events WHERE 1=1"
+            params: List[Any] = []
+            if resourceId is not None:
+                query += " AND resourceId = ?"
+                params.append(resourceId)
+            if actorId is not None:
+                query += " AND actorId = ?"
+                params.append(actorId)
+            query += " ORDER BY id ASC"
+            rows = conn.execute(query, params).fetchall()
+            event_counts: Dict[str, int] = {}
+            for row in rows:
+                event_counts[row["eventType"]] = event_counts.get(row["eventType"], 0) + 1
+            summary = [{"eventType": event_type, "count": count} for event_type, count in sorted(event_counts.items())]
+            return {
+                "resourceId": resourceId or "all",
+                "actorId": actorId or "all",
+                "totalAccessEvents": len(rows),
+                "eventTypeSummary": summary,
+                "exportedAt": datetime.now(timezone.utc).isoformat(),
+            }
         finally:
             conn.close()
 

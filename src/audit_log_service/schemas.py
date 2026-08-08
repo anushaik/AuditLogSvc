@@ -57,3 +57,16 @@ class ExportBundle(BaseModel):
     records: List[Dict[str, Any]]
     verification: VerificationResult
     exportedAt: str
+
+
+class ComplianceEventSummary(BaseModel):
+    eventType: str
+    count: int
+
+
+class ComplianceReport(BaseModel):
+    resourceId: str
+    actorId: str
+    totalAccessEvents: int
+    eventTypeSummary: List[ComplianceEventSummary]
+    exportedAt: str

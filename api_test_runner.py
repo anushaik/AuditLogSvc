@@ -155,6 +155,14 @@ def build_report():
     export_status, export_body = request_json("GET", "/audit/export?actorId=api-user")
     results.append(("GET /audit/export", "PASS" if export_status == 200 else "FAIL", export_body))
 
+    compliance_status, compliance_body = request_json(
+        "GET",
+        "/audit/compliance/report?resourceId=acct-100&actorId=api-user",
+    )
+    results.append(
+        ("GET /audit/compliance/report", "PASS" if compliance_status == 200 else "FAIL", compliance_body)
+    )
+
     html = f"""<!DOCTYPE html>
 <html lang=\"en\">
 <head>
@@ -173,7 +181,7 @@ def build_report():
 </head>
 <body>
   <h1>API Smoke Test Report</h1>
-  <p>This report covers Scenario A behavior plus the Scenario B retention, redaction, and export endpoints.</p>
+  <p>This report covers Scenario A behavior plus the Scenario B retention, redaction, and export endpoints and the Scenario C compliance report.</p>
   <table>
     <tr><th>Check</th><th>Status</th><th>Details</th></tr>
     {''.join(f'<tr><td>{name}</td><td class="{status.lower()}">{status}</td><td><pre>{details}</pre></td></tr>' for name, status, details in results)}
