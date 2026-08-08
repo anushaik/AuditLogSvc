@@ -92,6 +92,7 @@ Audit Event Store
 - Reuses the existing audit log service rather than introducing a separate compliance platform.
 - Supports scoped reporting by resource and actor.
 - Returns event counts and event-type summaries for rapid compliance review.
+- The service also adds lightweight security headers and an evidence bundle for reviewability.
 
 ## Combined Summary
 The solution evolves from a simple tamper-evident audit log into a more extensible service that supports:

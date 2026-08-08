@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Architecture Overview — Audit Log Service</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 24px; background: #f6f8fb; color: #1f2937; }
+    h1, h2, h3 { color: #0f172a; }
+    .container { max-width: 1300px; margin: 0 auto; }
+    .card { background: white; border-radius: 12px; padding: 20px; margin-bottom: 24px; box-shadow: 0 2px 10px rgba(0,0,0,0.06); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+    .box { background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 10px; padding: 14px; min-height: 120px; }
+    .box strong { display: block; margin-bottom: 6px; }
+    .box ul { margin: 6px 0 0 16px; padding: 0; }
+    .box li { margin-bottom: 5px; }
+    .note { background: #f8fafc; border-left: 4px solid #64748b; padding: 12px 14px; margin-top: 10px; }
+    .badge { display: inline-block; background: #dcfce7; color: #166534; padding: 4px 8px; border-radius: 999px; font-size: 12px; margin-right: 6px; margin-top: 6px; }
+    code { background: #f1f5f9; padding: 2px 4px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Architecture Overview — Audit Log Service</h1>
+    <p>This document is based on the implemented code and repository artifacts in the project, including the FastAPI application, database abstraction, Pydantic schemas, tests, and the generated smoke-test evidence.</p>
+
+    <div class="card">
+      <h2>1. Components</h2>
+      <div class="grid">
+        <div class="box">
+          <strong>API layer</strong>
+          <ul>
+            <li>FastAPI application serving the audit endpoints.</li>
+            <li>Handles request validation and response shaping.</li>
+            <li>Applies lightweight security headers via middleware.</li>
+          </ul>
+        </div>
+        <div class="box">
+          <strong>Domain logic</strong>
+          <ul>
+            <li>Computes the hash chain for each new event.</li>
+            <li>Replays the chain during verification.</li>
+            <li>Supports lifecycle and compliance operations over the same event records.</li>
+          </ul>
+        </div>
+        <div class="box">
+          <strong>Persistence layer</strong>
+          <ul>
+            <li>Abstracts SQLite and PostgreSQL access.</li>
+            <li>Creates and initializes the audit table.</li>
+            <li>Uses the same event schema across both backends.</li>
+          </ul>
+        </div>
+        <div class="box">
+          <strong>Validation and evidence</strong>
+          <ul>
+            <li>Pytest suite exercises core behavior and edge cases.</li>
+            <li>Smoke-test runner exercises the HTTP surface and produces HTML/markdown evidence.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>2. Data model</h2>
+      <div class="note">
+        The implemented data model is centered on a single <code>audit_events</code> table. The schema used by the service includes the following fields:
+      </div>
+      <ul>
+        <li><strong>id</strong>: primary key</li>
+        <li><strong>eventType</strong>, <strong>actorId</strong>, <strong>resourceType</strong>, <strong>resourceId</strong>: metadata describing the event</li>
+        <li><strong>payload</strong>: the event payload stored as JSON text</li>
+        <li><strong>timestamp</strong>: event timestamp</li>
+        <li><strong>prevHash</strong> and <strong>currHash</strong>: hash-chain values used for integrity verification</li>
+        <li><strong>status</strong>: lifecycle state, currently <code>active</code> or <code>archived</code></li>
+        <li><strong>redactedPayload</strong>, <strong>redactionVersion</strong>, <strong>redactionReason</strong>: metadata used for redaction support</li>
+      </ul>
+      <div class="note">
+        The implementation uses the same logical shape for SQLite and PostgreSQL, with the main difference being the SQL dialect and the auto-increment strategy for the primary key.
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>3. API design</h2>
+      <div class="grid">
+        <div class="box">
+          <strong>Core write/query flow</strong>
+          <ul>
+            <li><code>POST /audit/events</code>: writes a new event.</li>
+            <li><code>GET /audit/events</code>: lists events with optional filters and pagination.</li>
+            <li><code>GET /audit/verify</code>: returns integrity status for the whole chain.</li>
+          </ul>
+        </div>
+        <div class="box">
+          <strong>Lifecycle and review operations</strong>
+          <ul>
+            <li><code>POST /audit/events/{id}/archive</code>: marks an event archived.</li>
+            <li><code>POST /audit/events/{id}/redact</code>: stores a redacted payload copy and metadata.</li>
+            <li><code>POST /audit/events/retention/apply</code>: archives older records based on an age threshold.</li>
+          </ul>
+        </div>
+        <div class="box">
+          <strong>Export and compliance</strong>
+          <ul>
+            <li><code>GET /audit/export</code>: returns matching records plus verification metadata.</li>
+            <li><code>GET /audit/compliance/report</code>: returns a scoped summary by resource and actor.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>4. Key decisions implemented</h2>
+      <ul>
+        <li><span class="badge">Monolithic service</span> The implementation is a single FastAPI service rather than a distributed system, which keeps the prototype easy to run and review.</li>
+        <li><span class="badge">Append-only log model</span> Events are written in sequence and retained as historical records.</li>
+        <li><span class="badge">Hash-chain verification</span> Each event stores a <code>prevHash</code> and a computed <code>currHash</code> so tampering can be detected.</li>
+        <li><span class="badge">Metadata-based redaction</span> Redaction is implemented by storing a redacted payload copy and version/reason metadata without rewriting the original chain.</li>
+        <li><span class="badge">Scoped compliance reporting</span> Compliance reporting is intentionally lightweight and scoped by <code>resourceId</code> and <code>actorId</code>.</li>
+        <li><span class="badge">Lightweight security posture</span> The app adds response headers such as <code>x-frame-options</code>, <code>referrer-policy</code>, and a CSP to support basic hardening.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>5. Hash algorithm and chain design</h2>
+      <div class="note">
+        The implemented hash design uses <strong>SHA-256</strong>. The hash input is built from a canonical JSON representation of the event content and the previous hash value. The first record uses the literal marker <code>GENESIS</code> as its predecessor, and each following record uses the previous record's <code>currHash</code> as the input for the next hash.
+      </div>
+      <ul>
+        <li>The current implementation computes the hash from the event fields: <code>eventType</code>, <code>actorId</code>, <code>resourceType</code>, <code>resourceId</code>, <code>payload</code>, and <code>timestamp</code>.</li>
+        <li>Verification walks the records in order and recomputes the expected hash for each row.</li>
+        <li>If any stored hash or predecessor value does not match, the service returns a verification failure with the first mismatch location.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>6. Trade-offs and scope</h2>
+      <ul>
+        <li><strong>Prototype scope:</strong> the service is intentionally lightweight and review-friendly rather than a production-grade compliance platform.</li>
+        <li><strong>Verification vs prevention:</strong> the implementation detects tampering after the fact; it does not attempt to prevent unauthorized modification at the storage layer.</li>
+        <li><strong>Redaction model:</strong> redaction is metadata-based and suitable for this prototype, but it is not a full immutable-history versioning model.</li>
+        <li><strong>Storage choice:</strong> SQLite is the default runtime backend for simplicity, while PostgreSQL is supported through the database abstraction layer.</li>
+        <li><strong>Compliance reporting:</strong> the report is scoped and summary-based, which keeps it reviewable but intentionally narrower than a full regulator-facing workflow.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>7. Implementation artifacts referenced</h2>
+      <ul>
+        <li>FastAPI application and endpoints: <code>src/audit_log_service/app.py</code></li>
+        <li>Request/response models: <code>src/audit_log_service/schemas.py</code></li>
+        <li>Database abstraction and initialization: <code>src/audit_log_service/database.py</code></li>
+        <li>Automated tests: <code>tests/test_audit_service.py</code> and <code>tests/test_scenario_c.py</code></li>
+        <li>Smoke-test and evidence artifacts: <code>api_test_runner.py</code>, <code>api_test_report.html</code>, and <code>reports/evidence_summary.md</code></li>
+      </ul>
+    </div>
+  </div>
+</body>
+</html>

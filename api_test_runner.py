@@ -12,6 +12,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 HTML_PATH = ROOT / "api_test_report.html"
+MARKDOWN_PATH = ROOT / "reports" / "evidence_summary.md"
 BASE_URL = "http://127.0.0.1:8000"
 DEFAULT_BACKEND = os.getenv("DB_BACKEND", "postgres").lower()
 PSYCOPG2_AVAILABLE = importlib.util.find_spec("psycopg2") is not None
@@ -33,6 +34,9 @@ def stop_existing_server():
 
 def start_server():
     stop_existing_server()
+    db_path = ROOT / "src" / "audit.db"
+    if db_path.exists():
+        db_path.unlink()
     env = os.environ.copy()
     env["DB_BACKEND"] = EFFECTIVE_BACKEND
     subprocess.Popen(
@@ -72,6 +76,7 @@ def request_json(method, path, payload=None, expected_status=None):
 
 def build_report():
     results = []
+    generated_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     results.append(
         (
             "Backend configuration",
@@ -111,7 +116,7 @@ def build_report():
     query_status, query_body = request_json("GET", "/audit/events?actorId=api-user")
     results.append(("GET /audit/events", "PASS" if query_status == 200 else "FAIL", query_body))
 
-    db_path = ROOT / "audit.db"
+    db_path = ROOT / "src" / "audit.db"
     if EFFECTIVE_BACKEND == "sqlite" and db_path.exists():
         with sqlite3.connect(db_path) as conn:
             conn.execute(
@@ -129,10 +134,17 @@ def build_report():
         )
 
     verify_status, verify_body = request_json("GET", "/audit/verify")
+    verify_passed = False
+    if verify_status == 200:
+        try:
+            verify_payload = json.loads(verify_body)
+            verify_passed = verify_payload.get("intact") is False
+        except (TypeError, ValueError):
+            verify_passed = False
     results.append(
         (
             "GET /audit/verify after tampering",
-            "PASS" if verify_status == 200 and '"intact": false' in verify_body.lower() else "FAIL",
+            "PASS" if verify_passed else "FAIL",
             verify_body,
         )
     )
@@ -163,6 +175,10 @@ def build_report():
         ("GET /audit/compliance/report", "PASS" if compliance_status == 200 else "FAIL", compliance_body)
     )
 
+    pass_count = sum(1 for _, status, _ in results if status == "PASS")
+    fail_count = sum(1 for _, status, _ in results if status == "FAIL")
+    skip_count = sum(1 for _, status, _ in results if status == "SKIP")
+
     html = f"""<!DOCTYPE html>
 <html lang=\"en\">
 <head>
@@ -176,11 +192,14 @@ def build_report():
     th {{ background: #f5f5f5; }}
     .pass {{ color: #0a7f2e; font-weight: bold; }}
     .fail {{ color: #b42318; font-weight: bold; }}
+    .skip {{ color: #7a5d00; font-weight: bold; }}
     pre {{ white-space: pre-wrap; word-break: break-word; margin: 0; }}
   </style>
 </head>
 <body>
   <h1>API Smoke Test Report</h1>
+  <p>Generated: {generated_at}</p>
+  <p><strong>Summary:</strong> {pass_count} passed, {fail_count} failed, {skip_count} skipped.</p>
   <p>This report covers Scenario A behavior plus the Scenario B retention, redaction, and export endpoints and the Scenario C compliance report.</p>
   <table>
     <tr><th>Check</th><th>Status</th><th>Details</th></tr>
@@ -190,6 +209,19 @@ def build_report():
 </html>
 """
     HTML_PATH.write_text(html, encoding="utf-8")
+
+    markdown = f"""# Evidence Summary
+
+- Generated: {generated_at}
+- Backend: {DEFAULT_BACKEND} -> {EFFECTIVE_BACKEND}
+- Summary: {pass_count} passed, {fail_count} failed, {skip_count} skipped.
+
+## Checks
+
+"""
+    for name, status, details in results:
+        markdown += f"- [{status}] {name}: {details.replace(chr(10), ' ')}\n"
+    MARKDOWN_PATH.write_text(markdown, encoding="utf-8")
     return HTML_PATH
 
 

@@ -4,7 +4,10 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import status
 
 from .database import get_connection, init_db
 from .schemas import (
@@ -94,14 +97,297 @@ def verify_rows(rows: List[Any]) -> Dict[str, Any]:
     return {"intact": True, "firstFailure": None}
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db(app.state.db_path)
+    yield
+
+
 def create_app(db_path: str = "audit.db") -> FastAPI:
-    app = FastAPI(title="Audit Log Service")
+    app = FastAPI(title="Audit Log Service", lifespan=lifespan)
     app.state.db_path = db_path
     app.state.db_backend = os.getenv("DB_BACKEND", "sqlite")
 
-    @app.on_event("startup")
-    def startup() -> None:
-        init_db(app.state.db_path)
+    @app.middleware("http")
+    async def add_security_headers(request: Request, call_next):
+        response = await call_next(request)
+        response.headers["x-content-type-options"] = "nosniff"
+        response.headers["x-frame-options"] = "DENY"
+        response.headers["referrer-policy"] = "no-referrer"
+        response.headers["permissions-policy"] = "geolocation=(), microphone=(), camera=()"
+        response.headers["content-security-policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+            "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+            "img-src 'self' data: https://fastapi.tiangolo.com https://cdn.jsdelivr.net; "
+            "font-src 'self' data: https://cdn.jsdelivr.net; "
+            "connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
+        )
+        return response
+
+    @app.get("/health")
+    def health() -> Dict[str, Any]:
+        return {"status": "ok", "backend": app.state.db_backend}
+
+    @app.post("/audit/events", response_model=AuditEventOut)
+    def create_event(event: AuditEventIn, request: Request) -> Dict[str, Any]:
+        db_path = request.app.state.db_path
+        conn = get_connection(db_path)
+        try:
+            timestamp = event.timestamp or datetime.now(timezone.utc).isoformat()
+            prev_row = conn.execute(
+                "SELECT currHash FROM audit_events ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            prev_hash = prev_row["currHash"] if prev_row else "GENESIS"
+            payload_json = json.dumps(event.payload, sort_keys=True, ensure_ascii=False)
+            curr_hash = compute_hash({
+                "eventType": event.eventType,
+                "actorId": event.actorId,
+                "resourceType": event.resourceType,
+                "resourceId": event.resourceId,
+                "payload": event.payload,
+                "timestamp": timestamp,
+            }, prev_hash)
+            cursor = conn.execute(
+                """
+                INSERT INTO audit_events (
+                    eventType, actorId, resourceType, resourceId, payload, timestamp, prevHash, currHash,
+                    status, redactedPayload, redactionVersion, redactionReason
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    event.eventType,
+                    event.actorId,
+                    event.resourceType,
+                    event.resourceId,
+                    payload_json,
+                    timestamp,
+                    prev_hash,
+                    curr_hash,
+                    "active",
+                    None,
+                    0,
+                    None,
+                ),
+            )
+            conn.commit()
+            event_id = cursor.lastrowid if hasattr(cursor, "lastrowid") else None
+            if event_id is None:
+                event_id = conn.execute("SELECT MAX(id) AS id FROM audit_events").fetchone()["id"]
+            row = conn.execute("SELECT * FROM audit_events WHERE id = ?", (event_id,)).fetchone()
+            return serialise_row(row)
+        finally:
+            conn.close()
+
+    @app.get("/audit/events", response_model=Dict[str, Any])
+    def list_events(
+        request: Request,
+        actorId: Optional[str] = None,
+        resourceType: Optional[str] = None,
+        resourceId: Optional[str] = None,
+        eventType: Optional[str] = None,
+        from_time: Optional[str] = Query(default=None, alias="from"),
+        to_time: Optional[str] = None,
+        page: int = 1,
+        pageSize: int = 20,
+    ) -> Dict[str, Any]:
+        if page < 1:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="page must be >= 1")
+        if pageSize < 1:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="pageSize must be >= 1")
+
+        db_path = request.app.state.db_path
+        conn = get_connection(db_path)
+        try:
+            query = "SELECT * FROM audit_events WHERE 1=1"
+            params: List[Any] = []
+            if actorId is not None:
+                query += " AND actorId = ?"
+                params.append(actorId)
+            if resourceType is not None:
+                query += " AND resourceType = ?"
+                params.append(resourceType)
+            if resourceId is not None:
+                query += " AND resourceId = ?"
+                params.append(resourceId)
+            if eventType is not None:
+                query += " AND eventType = ?"
+                params.append(eventType)
+            if from_time is not None:
+                query += " AND timestamp >= ?"
+                params.append(from_time)
+            if to_time is not None:
+                query += " AND timestamp <= ?"
+                params.append(to_time)
+            query += " ORDER BY id ASC"
+            rows = conn.execute(query, params).fetchall()
+            total = len(rows)
+            start = (page - 1) * pageSize
+            end = start + pageSize
+            items = [serialise_row(row) for row in rows[start:end]]
+            return {"total": total, "page": page, "pageSize": pageSize, "items": items}
+        finally:
+            conn.close()
+
+    @app.get("/audit/verify", response_model=VerificationResult)
+    def verify_chain(request: Request) -> Dict[str, Any]:
+        db_path = request.app.state.db_path
+        conn = get_connection(db_path)
+        try:
+            rows = conn.execute("SELECT * FROM audit_events ORDER BY id ASC").fetchall()
+            return verify_rows(rows)
+        finally:
+            conn.close()
+
+    @app.post("/audit/events/{event_id}/archive")
+    def archive_event(event_id: int, request: Request) -> Dict[str, Any]:
+        db_path = request.app.state.db_path
+        conn = get_connection(db_path)
+        try:
+            cursor = conn.execute("UPDATE audit_events SET status = ? WHERE id = ?", ("archived", event_id))
+            conn.commit()
+            if cursor.rowcount in (0, None):
+                raise HTTPException(status_code=404, detail="event not found")
+            row = conn.execute("SELECT * FROM audit_events WHERE id = ?", (event_id,)).fetchone()
+            return {"id": row["id"], "status": row["status"]}
+        finally:
+            conn.close()
+
+    @app.post("/audit/events/{event_id}/redact")
+    def redact_event(event_id: int, payload: RedactionRequest, request: Request) -> Dict[str, Any]:
+        db_path = request.app.state.db_path
+        conn = get_connection(db_path)
+        try:
+            row = conn.execute("SELECT * FROM audit_events WHERE id = ?", (event_id,)).fetchone()
+            if row is None:
+                raise HTTPException(status_code=404, detail="event not found")
+
+            current_payload = json.loads(row["payload"]) if row["payload"] else {}
+            redacted_payload = dict(current_payload)
+            for field in payload.fields:
+                redacted_payload[field] = "[REDACTED]"
+            next_version = (row["redactionVersion"] or 0) + 1
+            conn.execute(
+                """
+                UPDATE audit_events
+                SET redactedPayload = ?, redactionVersion = ?, redactionReason = ?
+                WHERE id = ?
+                """,
+                (json.dumps(redacted_payload), next_version, payload.reason, event_id),
+            )
+            conn.commit()
+            updated = conn.execute("SELECT * FROM audit_events WHERE id = ?", (event_id,)).fetchone()
+            return {
+                "id": updated["id"],
+                "status": updated["status"],
+                "redactedPayload": json.loads(updated["redactedPayload"]),
+                "redactionVersion": updated["redactionVersion"],
+                "redactionReason": updated["redactionReason"],
+            }
+        finally:
+            conn.close()
+
+    @app.post("/audit/events/retention/apply")
+    def apply_retention(olderThanDays: int = 30, request: Request = None) -> Dict[str, Any]:
+        if olderThanDays < 0:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="olderThanDays must be >= 0")
+
+        db_path = request.app.state.db_path
+        conn = get_connection(db_path)
+        try:
+            cutoff = datetime.now(timezone.utc) - timedelta(days=olderThanDays)
+            rows = conn.execute("SELECT id, timestamp, status FROM audit_events ORDER BY id ASC").fetchall()
+            eligible_ids = []
+            for row in rows:
+                try:
+                    created_at = parse_timestamp(row["timestamp"])
+                except ValueError:
+                    continue
+                if row["status"] != "archived" and created_at < cutoff:
+                    eligible_ids.append(row["id"])
+            if eligible_ids:
+                placeholders = ", ".join(["?"] * len(eligible_ids))
+                conn.execute(
+                    f"UPDATE audit_events SET status = 'archived' WHERE id IN ({placeholders}) AND status != 'archived'",
+                    eligible_ids,
+                )
+                conn.commit()
+            return {"archivedCount": len(eligible_ids), "ids": eligible_ids}
+        finally:
+            conn.close()
+
+    @app.get("/audit/compliance/report", response_model=ComplianceReport)
+    def compliance_report(
+        request: Request,
+        resourceId: Optional[str] = None,
+        actorId: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        db_path = request.app.state.db_path
+        conn = get_connection(db_path)
+        try:
+            query = "SELECT eventType, actorId, resourceId FROM audit_events WHERE 1=1"
+            params: List[Any] = []
+            if resourceId is not None:
+                query += " AND resourceId = ?"
+                params.append(resourceId)
+            if actorId is not None:
+                query += " AND actorId = ?"
+                params.append(actorId)
+            query += " ORDER BY id ASC"
+            rows = conn.execute(query, params).fetchall()
+            event_counts: Dict[str, int] = {}
+            for row in rows:
+                event_counts[row["eventType"]] = event_counts.get(row["eventType"], 0) + 1
+            summary = [{"eventType": event_type, "count": count} for event_type, count in sorted(event_counts.items())]
+            return {
+                "resourceId": resourceId or "all",
+                "actorId": actorId or "all",
+                "totalAccessEvents": len(rows),
+                "eventTypeSummary": summary,
+                "exportedAt": datetime.now(timezone.utc).isoformat(),
+            }
+        finally:
+            conn.close()
+
+    @app.get("/audit/export", response_model=ExportBundle)
+    def export_events(
+        request: Request,
+        actorId: Optional[str] = None,
+        resourceType: Optional[str] = None,
+        resourceId: Optional[str] = None,
+        eventType: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        db_path = request.app.state.db_path
+        conn = get_connection(db_path)
+        try:
+            query = "SELECT * FROM audit_events WHERE 1=1"
+            params: List[Any] = []
+            if actorId is not None:
+                query += " AND actorId = ?"
+                params.append(actorId)
+            if resourceType is not None:
+                query += " AND resourceType = ?"
+                params.append(resourceType)
+            if resourceId is not None:
+                query += " AND resourceId = ?"
+                params.append(resourceId)
+            if eventType is not None:
+                query += " AND eventType = ?"
+                params.append(eventType)
+            query += " ORDER BY id ASC"
+            rows = conn.execute(query, params).fetchall()
+            records = [serialise_row(row) for row in rows]
+            return {
+                "totalRecords": len(records),
+                "records": records,
+                "verification": verify_rows(rows),
+                "exportedAt": datetime.now(timezone.utc).isoformat(),
+            }
+        finally:
+            conn.close()
+
+    return app
 
     @app.get("/health")
     def health() -> Dict[str, Any]:

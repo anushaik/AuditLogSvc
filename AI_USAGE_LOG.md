@@ -243,3 +243,41 @@ This log is intended to support the assignment's AI-assisted execution expectati
 - Notes: Recorded automatically by the repository post-commit hook
 
 ---
+
+## 2026-08-08 01:32 UTC
+- Step: Auto-logged after commit
+- Prompt: N/A
+- AI output: Recorded automatically by the repository post-commit hook
+- Command: N/A
+- Decision: accepted
+- Accepted details:
+- Committed repository changes
+- Rejected details:
+- None
+- Notes: Recorded automatically by the repository post-commit hook
+
+---
+
+## 2026-08-08 02:00 UTC
+- Task: Consolidated traceability summary for the completed workstream
+- Prompt: "Build a working prototype, keep the implementation reviewable, document the setup and testing approach, and make the repository easy to run and understand."
+- AI output: Produced a runnable FastAPI-based audit log service with Scenario A/B/C support, automated tests, smoke-test evidence, architecture documentation, README updates, and testing notes.
+- Decision: accepted
+- Accepted details:
+  - Implemented the core audit service with append-only storage and hash-chain verification.
+  - Added Scenario B lifecycle capabilities for archive, redaction, retention, and export.
+  - Added Scenario C compliance-report support.
+  - Generated smoke-test HTML and Markdown evidence artifacts.
+  - Added architecture, testing, engineering summary, attestation, and setup documentation.
+- Modified details:
+  - Adjusted the project structure and package import paths for a more reviewable repository layout.
+  - Reworked the README to reflect the actual local run steps, prerequisites, and troubleshooting guidance.
+  - Reframed the architecture overview and testing documentation to match the implemented behavior rather than a generic template.
+- Rejected or deferred details:
+  - Full production-grade authentication, role-based access control, advanced observability, and enterprise deployment controls were not implemented as the primary scope because the assignment required a working prototype and reviewable engineering outcome first.
+- Why these choices were made:
+  - The overall objective was to deliver a runnable, end-to-end, reviewable prototype that could demonstrate tamper evidence, lifecycle operations, and compliance reporting within the available scope.
+  - Production-hardening items were treated as future work rather than core deliverables for this iteration.
+- Notes: This entry summarizes the overall operation completed so far and records the rationale for the accepted implementation scope and the deferred production features.
+
+---

@@ -22,10 +22,11 @@ The repository includes the following artifacts for Scenario A:
 - tests/test_audit_service.py: automated tests covering success, invalid input, and tamper detection.
 - api_test_runner.py: smoke-test script for exercising the API over HTTP.
 - reports/api_test_report.html: generated HTML report for smoke-test execution.
+- reports/evidence_summary.md: generated evidence summary for review.
 - reports/test_report.html: generated HTML report for the pytest suite.
 - README.md: local setup and usage instructions.
-- Testing_Documentation_ScenarioA.md: testing approach and current coverage summary.
-- Requirements_Traceability_ScenarioA.md: mapping from requirements to implemented artifacts.
+- TestingDocumentation.md: testing approach and current coverage summary.
+- Requirements_Traceability.md: mapping from requirements to implemented artifacts.
 - AI_USAGE_LOG.md: traceability of AI-assisted work.
 
 ### 3. Design Summary
@@ -80,6 +81,37 @@ Scenario C was implemented as a scoped compliance-reporting extension over the e
 
 ### Validation
 Verified through the automated test suite and the existing smoke-test runner.
+
+## Production Readiness Roadmap
+To evolve this prototype into a production-grade application, the next steps should be prioritized in a practical sequence:
+
+1. Authentication and authorization
+   - Protect write, archive, redact, export, and verification endpoints with authentication.
+   - Introduce role-based access control for administrators, auditors, and operators.
+   - Ensure that only authorized principals can change sensitive records or access restricted data.
+
+2. Infrastructure and configuration hardening
+   - Move from SQLite to a managed database such as PostgreSQL.
+   - Externalize configuration through environment variables or a secrets manager.
+   - Add migration tooling and deployment-safe database initialization.
+
+3. Security hardening
+   - Enforce HTTPS and secure transport settings.
+   - Strengthen CORS, input validation, and secret handling.
+   - Consider encryption for sensitive payload content where appropriate.
+
+4. Observability and operations
+   - Add structured logging, request correlation, metrics, and health/readiness checks.
+   - Introduce alerts and dashboards for failures, latency, and integrity anomalies.
+
+5. Reliability and resilience
+   - Add retry logic, connection pooling, graceful shutdown, and backup/restore practices.
+   - Test failure scenarios such as database outage and partial data corruption.
+
+6. Testing maturity
+   - Add integration tests against a real database.
+   - Add load, concurrency, and authorization tests.
+   - Expand regression coverage for operational edge cases.
 
 ## Overall Conclusion
 The delivered solution satisfies the core requirements of the audit log assignment in a way that is runnable, testable, and easy to review. It demonstrates a practical engineering approach for a tamper-evident audit log service while keeping the implementation understandable and aligned with the assignment’s expectations.

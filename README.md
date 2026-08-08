@@ -1,21 +1,47 @@
 # AuditLogSvc
 Tamper evident Audit log service
 
+## Working prototype — runnable end-to-end
+This repository contains a working prototype of a tamper-evident audit log service that is runnable end to end, with a FastAPI interface, automated tests, smoke-test evidence, and scenario-based extensions.
+
+## Prerequisites
+- Python 3.9+ (3.11 recommended)
+- `pip` and `venv` available for creating a virtual environment
+- `zsh` for the provided run script (`./run.sh`), which is available by default on macOS
+- Optional: Docker Desktop if you want to run the PostgreSQL-based option
+
 ## Run locally
 
 ### Option 1: SQLite (default)
-1. Install dependencies:
+1. Open a terminal in the repository root:
+   `cd /Users/anwar/project_Trails/AuditLogSvc`
+2. Create and activate a virtual environment (recommended):
+   `python3 -m venv .venv`
+   `source .venv/bin/activate`
+3. Install dependencies:
+   `python3 -m pip install --upgrade pip`
    `python3 -m pip install -r requirements.txt`
-2. Start the service:
+4. Start the service:
    `./run.sh`
-3. Use the API at:
+5. Open the Swagger UI at: http://127.0.0.1:8000/docs
 
 ### Option 2: PostgreSQL via Docker Compose
-1. Build and start the app and database:
+1. Ensure Docker Desktop is running.
+2. Build and start the app and database from the repository root:
    `docker compose up --build`
-2. The service will be available at `http://localhost:8000`.
-3. To stop the environment:
+3. The service will be available at `http://localhost:8000`.
+4. To stop the environment:
    `docker compose down`
+
+### Manual start without the shell script
+If you prefer to start the app directly, run:
+`PYTHONPATH=src python3 -m uvicorn audit_log_service.app:app --host 127.0.0.1 --port 8000`
+
+### Troubleshooting
+- If the service fails to start with `ModuleNotFoundError`, make sure you are in the repository root and have installed the dependencies with `python3 -m pip install -r requirements.txt`.
+- If the app cannot be imported, run it with `PYTHONPATH=src` as shown above, or from the repository root using the provided `./run.sh` script.
+- If port `8000` is already in use, stop the existing process or start the app on a different port, for example `PYTHONPATH=src python3 -m uvicorn audit_log_service.app:app --host 127.0.0.1 --port 8001`.
+- If Docker-based PostgreSQL fails to start, verify that Docker Desktop is running and that the compose file in the repository is the one you intended to use.
 
 ### Environment configuration
 A sample environment file is available at [.env.example](.env.example). For PostgreSQL, set `DB_BACKEND=postgres` and configure `DATABASE_URL` or the individual DB host variables.
@@ -26,7 +52,7 @@ Use the API at:
    - GET /audit/verify
 
 ### Timestamp behavior
-The service uses the caller-supplied timestamp when provided; otherwise it assigns a UTC timestamp automatically.
+The service uses the caller-supplied timestamp when provided; otherwise it assigns a UTC timestamp automatically. All responses also include lightweight security headers for reviewability and basic hardening.
 
 ### Example request
 ```json
@@ -59,11 +85,11 @@ The service uses the caller-supplied timestamp when provided; otherwise it assig
 Run the test suite with:
 `python3 -m pytest -q`
 
-The Scenario A testing notes are documented in [Testing_Documentation_ScenarioA.md](Testing_Documentation_ScenarioA.md), and the smoke-test report is generated at [api_test_report.html](api_test_report.html).
+The Scenario A testing notes are documented in [TestingDocumentation.md](TestingDocumentation.md), and the smoke-test and evidence artifacts are generated at [api_test_report.html](api_test_report.html) and [reports/evidence_summary.md](reports/evidence_summary.md).
 
-## Scenario B documentation
+## Scenario B and C documentation
 
-The Scenario B extension is documented in [ScenarioB_Documentation.md](ScenarioB_Documentation.md), and the expanded API smoke report is available at [api_test_report.html](api_test_report.html).
+The Scenario B and C extensions are documented in [Documentation_ScenarioB.md](Documentation_ScenarioB.md), [Documentation_ScenarioC.md](Documentation_ScenarioC.md), and the consolidated architecture and traceability references in [Architecture_Diagram.md](Architecture_Diagram.md), [architecture_overview.html](architecture_overview.html), and [Requirements_Traceability.md](Requirements_Traceability.md).
 
 ## AI usage tracking
 
@@ -85,6 +111,7 @@ This workflow is intended to support the assignment's AI-assisted execution expe
 - [.githooks/post-commit](.githooks/post-commit): Git hook that records a basic entry automatically after each commit
 - [src/audit_log_service/app.py](src/audit_log_service/app.py): main application package
 - [reports/api_test_report.html](reports/api_test_report.html): generated smoke-test report
+- [reports/evidence_summary.md](reports/evidence_summary.md): generated evidence summary for review
 
 ### Usage
 - Manual entry with prompt, output, command, and decision:
@@ -171,6 +198,7 @@ Returns:
 - The implementation reuses the existing audit log service and hash-chain verification model.
 - The report is scoped by `resourceId` and `actorId` to keep it reviewable and lightweight.
 - The prototype does not attempt to provide a full regulator-facing platform or a complete role-based compliance workflow.
+- The service also adds lightweight security headers and evidence artifacts to strengthen the review story without introducing heavyweight infrastructure.
 
 ## Validation
 Run the test suite with:
@@ -179,7 +207,7 @@ python3 -m pytest -q
 ```
 
 Additional documentation for this scenario is available in:
-- [Requirement_Understanding_ScenarioC.md](Requirement_Understanding_ScenarioC.md)
-- [Architecture_Diagram_ScenarioC.md](Architecture_Diagram_ScenarioC.md)
-- [ScenarioC_Documentation.md](ScenarioC_Documentation.md)
+- [Requirement_Understanding.md](Requirement_Understanding.md)
+- [Architecture_Diagram.md](Architecture_Diagram.md)
+- [Documentation_ScenarioC.md](Documentation_ScenarioC.md)
 

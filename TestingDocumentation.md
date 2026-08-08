@@ -4,22 +4,39 @@
 This document describes the automated tests and smoke-test validation implemented for the Scenario A audit log service.
 
 ## Test Strategy
-The testing approach covers:
-- API-level validation of required fields and invalid payload handling
-- end-to-end write/query/verify behavior
-- tamper detection through direct database modification
-- smoke-test reporting for the HTTP surface area
+The current approach is intentionally pragmatic. It validates the core behaviors needed to demonstrate that the prototype works end to end, while staying lightweight and easy to run locally.
+
+### What is covered
+- API-level validation for required fields and invalid payloads
+- End-to-end write, query, and verify behavior
+- Tamper detection by modifying stored data directly in the database
+- Security-header behavior for the health endpoint
+- Lifecycle and export-related behavior that extends the core Scenario A flow
+- Smoke-test generation for a review-friendly HTML and Markdown evidence report
+
+### What is not covered yet
+- Load testing or concurrent request testing
+- Performance benchmarking against real production-scale traffic
+- Security testing beyond basic input validation and header checks
+- Recovery testing for database failure, corruption, or partial outages
+- Multi-user or role-based authorization testing
+
+### Why this scope was chosen
+The implementation is a working prototype rather than a full production platform. The tests focus on correctness of the core requirements, tamper evidence, and reviewability so the behavior can be demonstrated quickly and clearly without introducing heavy infrastructure or brittle test dependencies.
 
 ## Automated Tests
+The main automated suite is implemented in [tests/test_audit_service.py](tests/test_audit_service.py).
 
 ### Covered behaviors
 - A valid event can be created and retrieved through the API.
 - The verification endpoint reports the chain as intact for a clean log.
 - Invalid input is rejected with a validation error.
 - Tampering with stored data is detected by the verification endpoint.
+- Archived records do not break verification.
+- Retention, redaction, and export workflows are exercised in a realistic sequence.
 
 ### Implementation reference
-The test coverage is implemented in [tests/test_audit_service.py](tests/test_audit_service.py).
+See [tests/test_audit_service.py](tests/test_audit_service.py) for the concrete test cases.
 
 ## Test Cases
 
@@ -56,29 +73,32 @@ python3 -m pytest -q
 
 ## Current Result
 Verified result:
-- 3 tests passed
+- 17 tests passed in the current suite
 
-## Notes
-The implementation uses a lightweight prototype architecture, so tests focus on correctness of the core Scenario A requirements rather than enterprise-scale performance or resilience.
+## Trade-offs and limitations
+- The test suite is fast and self-contained, which is ideal for local review and assignment delivery.
+- It does not yet simulate production concerns such as scale, concurrency, or external service failures.
+- The design prioritizes demonstrable correctness over operational hardening.
 
 # Testing Documentation – Scenario B
 
 ## Objective
 Validate the Scenario B extensions for retention, redaction, and export while preserving the Scenario A tamper-evidence behavior.
 
-## Test Coverage
+## What is covered
+- Validation that required event fields are non-empty.
+- Validation that redaction requests include at least one field.
+- Validation that export bundles contain verification metadata.
+- End-to-end coverage for archive, redact, retention, and export behavior.
 
-### Unit / schema tests
-- Validate that required event fields are non-empty.
-- Validate that redaction requests include at least one field.
-- Validate that export bundles contain a verification block.
+## What is not covered yet
+- Large-volume retention operations.
+- Long-running export jobs or file-based export formats.
+- Performance or concurrency behavior under multiple simultaneous requests.
+- Data-loss or rollback scenarios for retention actions.
 
-### Integration tests
-- Create an event and verify it is stored with default active state.
-- Archive an event through the archive endpoint.
-- Redact a payload field and confirm the redacted payload and metadata are returned.
-- Apply retention and confirm eligible records are marked as archived.
-- Export records and confirm the response contains the expected records and verification metadata.
+## Why this scope was chosen
+Scenario B is implemented as a minimum viable extension of the core service. The tests verify the intended workflow and the expected state transitions without trying to model enterprise-scale operational complexity.
 
 ## Validation Commands
 Run the full suite:
@@ -91,19 +111,33 @@ Run the smoke-test runner:
 python3 api_test_runner.py
 ```
 
+## Trade-offs
+The tests are strong on functional correctness and state transitions, but they are not yet a substitute for production-grade operational or resilience testing.
+
 # Testing Documentation – Scenario C
 
 ## Objective
 Validate the compliance-report endpoint and its summaries for a scoped audit review flow.
 
-## Test Cases
-- Create access-related events for a selected account and actor.
-- Query the compliance report by `resourceId` and `actorId`.
-- Verify that the report returns the expected event counts and event-type summary.
+## What is covered
+- Creation of access-related events for a selected account and actor.
+- Querying the compliance report by `resourceId` and `actorId`.
+- Verification that the report returns the expected event counts and event-type summary.
+
+## What is not covered yet
+- Role-based access control for who can run the compliance report.
+- Complex aggregation rules beyond simple event counting.
+- Long-term reporting behavior across large datasets.
+
+## Why this scope was chosen
+Scenario C is intentionally lightweight and review-oriented. The implementation focuses on a minimum viable interpretation of the requirement: produce a clear, auditable summary using the same underlying event store.
 
 ## Validation
 Run:
 ```bash
 python3 -m pytest -q
 ```
+
+## Trade-offs
+The current tests verify the report shape and aggregation logic, but they do not attempt to model full compliance workflows, regulatory reporting standards, or advanced authorization rules.
 
