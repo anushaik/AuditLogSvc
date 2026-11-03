@@ -1,7 +1,5 @@
 # Assignment: Audit Log Service
 
-> Version: 2.0 | Date: 2026-08-03
-
 ## 0. How to Submit & Integrity Expectations — Read First
 
 This is an individual, confidential assessment. The system you build and the evidence of how you built it will be evaluated. Please read and follow these expectations carefully because they are part of the assessment.
