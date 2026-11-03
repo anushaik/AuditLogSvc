@@ -1,8 +1,5 @@
-# Interview Assignment: Audit Log Service
+# Assignment: Audit Log Service
 
-> Extracted from the assignment PDF and reformatted for easier review.
-
-> Charles Schwab & Co., Inc. — Confidential & Proprietary. Provided solely for individual candidate assessment. Do not copy, distribute, re-host, or retain after submission.
 > Version: 2.0 | Date: 2026-08-03
 
 ## 0. How to Submit & Integrity Expectations — Read First
